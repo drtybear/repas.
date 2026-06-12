@@ -52,6 +52,9 @@ input:focus, textarea:focus, select:focus{ outline:2px solid var(--accent); outl
 .pill.entree{ background:var(--olive-soft); color:var(--olive); }
 .pill.plat{ background:var(--accent-soft); color:var(--accent); }
 .pill.dessert{ background:var(--honey-soft); color:var(--honey); }
+.pill.cantine{ background:var(--night-soft); color:var(--night); }
+.pill.resto{ background:#efe6f5; color:#8d5fa8; }
+.pill.autre{ background:#ece7df; color:#6f675c; }
 .row{ display:flex; gap:8px; align-items:center; }
 .note{ color:var(--muted); font-size:13.5px; }
 .empty{ text-align:center; color:var(--muted); padding:26px 10px; font-size:14.5px; }
@@ -121,8 +124,8 @@ input:focus, textarea:focus, select:focus{ outline:2px solid var(--accent); outl
   font-size:22px; font-weight:700; cursor:pointer; flex-shrink:0; }
 
 /* éditeur */
-.seg{ display:flex; gap:6px; }
-.seg button{ flex:1; border:1.5px solid var(--line); background:var(--card); color:var(--ink);
+.seg{ display:flex; gap:6px; flex-wrap:wrap; }
+.seg button{ flex:1 1 30%; border:1.5px solid var(--line); background:var(--card); color:var(--ink);
   padding:10px 4px; border-radius:12px; font-size:14.5px; font-weight:600; cursor:pointer; }
 .seg button.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
 .field{ margin-bottom:14px; }
@@ -174,7 +177,7 @@ function lsSet(k, v){
 }
 
 /* ============ données ============ */
-const TYPES = { entree:'Entrée', plat:'Plat', dessert:'Dessert' };
+const TYPES = { entree:'Entrée', plat:'Plat', dessert:'Dessert', cantine:'Cantine', resto:'Resto', autre:'Autre' };
 const SLOTS = [ {k:'m', lbl:'Matin', cls:'m'}, {k:'d', lbl:'Midi', cls:'d'}, {k:'s', lbl:'Soir', cls:'s'} ];
 const DAYS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
 const MONTHS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
@@ -255,18 +258,43 @@ let inCook = false;
 function clearTimers(){ Object.values(cookTimers).forEach(t=>clearInterval(t.int)); cookTimers = {}; }
 function leaveCook(){ clearTimers(); unlockScreen(); inCook = false; }
 
-function topbar(title, onBack){
+function topbar(title){
   const tb = document.createElement('div');
   tb.className = 'topbar';
   tb.innerHTML = '<button class="back">‹ Retour</button><div class="screen-title">'+esc(title)+'</div>';
-  tb.querySelector('.back').onclick = onBack;
+  tb.querySelector('.back').onclick = ()=>history.back();
   return tb;
 }
 function closeOverlay(){ const o = document.querySelector('.overlay'); if(o) o.remove(); }
 
+/* ============ navigation (geste retour du téléphone) ============ */
+let fromPop = false;
+function pushScreen(st){
+  if(fromPop){ fromPop = false; return; }
+  try{ history.pushState(st, ''); }catch(e){}
+}
+function renderState(st){
+  fromPop = true;
+  st = st || { screen:'home' };
+  if(st.screen==='cal') calScreen(st.offset||0);
+  else if(st.screen==='recipes') recipesScreen(st.q||'');
+  else if(st.screen==='edit') editScreen(st.id||null);
+  else if(st.screen==='cook') cookScreen(st.id);
+  else if(st.screen==='list') listScreen(st.kind||'frigo');
+  else if(st.screen==='courses') coursesScreen();
+  else if(st.screen==='settings') settingsScreen();
+  else home();
+}
+window.addEventListener('popstate', e=>{
+  const o = document.querySelector('.overlay');
+  if(o) o.remove();
+  renderState(e.state);
+});
+
 /* ============ accueil ============ */
 function home(){
   leaveCook(); closeOverlay();
+  pushScreen({ screen:'home' });
   const nC = courses.filter(c=>!c.done).length;
   const todayKey = isoDate(new Date());
   const tp = plan[todayKey] || {};
@@ -325,8 +353,9 @@ function matchRecipe(r, q){
 }
 function recipesScreen(query){
   leaveCook(); closeOverlay();
+  pushScreen({ screen:'recipes', q:query||'' });
   app.innerHTML = '';
-  app.appendChild(topbar('Mes recettes', home));
+  app.appendChild(topbar('Mes recettes'));
   const box = document.createElement('div');
   box.innerHTML = `
     <div class="searchbar"><input type="search" id="rq" placeholder="Rechercher un nom ou un aliment…" value="${esc(query)}"></div>
@@ -396,12 +425,13 @@ function addIngsToCourses(r){
 /* ============ éditeur de recette ============ */
 function editScreen(id){
   leaveCook(); closeOverlay();
+  pushScreen({ screen:'edit', id:id||null });
   const existing = id ? recipes.find(r=>r.id===id) : null;
   const draft = existing
     ? JSON.parse(JSON.stringify(existing))
     : { id:uid(), name:'', type:'plat', serves:2, ings:[{n:'',q:null,u:''}], steps:[{t:'',m:null}], created:Date.now() };
   app.innerHTML = '';
-  app.appendChild(topbar(existing?'Modifier la recette':'Nouvelle recette', ()=>recipesScreen('')));
+  app.appendChild(topbar(existing?'Modifier la recette':'Nouvelle recette'));
   const box = document.createElement('div');
   box.innerHTML = `
     <div class="field"><label>Nom</label><input type="text" id="e-name" placeholder="Ex : Gratin dauphinois" value="${esc(draft.name)}"></div>
@@ -468,7 +498,7 @@ function editScreen(id){
     lsSet('recipes', recipes);
     openRecipe = draft.id;
     buzz(30);
-    recipesScreen('');
+    history.back();
   };
   document.getElementById('e-name').oninput = e=>{ draft.name = e.target.value; };
 }
@@ -478,11 +508,12 @@ function cookScreen(id){
   const r = recipes.find(x=>x.id===id);
   if(!r){ home(); return; }
   leaveCook(); closeOverlay();
+  pushScreen({ screen:'cook', id:id });
   inCook = true; lockScreen();
   let serves = r.serves;
   const done = r.steps.map(()=>false);
   app.innerHTML = '';
-  app.appendChild(topbar(r.name, ()=>{ leaveCook(); recipesScreen(''); }));
+  app.appendChild(topbar(r.name));
   const box = document.createElement('div');
   box.innerHTML = `
     <div class="card">
@@ -561,7 +592,7 @@ function cookScreen(id){
     tick();
   }
   renderSteps(); updateProg();
-  document.getElementById('c-finish').onclick = ()=>{ buzz([60,40,60]); leaveCook(); recipesScreen(''); };
+  document.getElementById('c-finish').onclick = ()=>{ buzz([60,40,60]); history.back(); };
 }
 
 /* ============ calendrier ============ */
@@ -576,8 +607,9 @@ function weekStart(offset){
 }
 function calScreen(offset){
   leaveCook(); closeOverlay();
+  pushScreen({ screen:'cal', offset:offset });
   app.innerHTML = '';
-  app.appendChild(topbar('Calendrier', home));
+  app.appendChild(topbar('Calendrier'));
   const start = weekStart(offset);
   const end = new Date(start); end.setDate(end.getDate()+6);
   const lbl = offset===0 ? 'Cette semaine' : (offset===1 ? 'Semaine prochaine' : (offset===-1 ? 'Semaine dernière' :
@@ -632,15 +664,15 @@ function pickMeal(dateKey, slotKey, offset){
     <button class="ghost" id="p-close" style="margin-top:8px">Fermer</button>
   </div>`;
   document.body.appendChild(ov);
-  ov.onclick = e=>{ if(e.target===ov) ov.remove(); };
+  try{ history.pushState({ screen:'cal', offset:offset }, ''); }catch(e){}
+  ov.onclick = e=>{ if(e.target===ov) history.back(); };
   function setEntry(entry){
     if(!plan[dateKey]) plan[dateKey] = {};
     if(entry) plan[dateKey][slotKey] = entry; else delete plan[dateKey][slotKey];
     if(!Object.keys(plan[dateKey]).length) delete plan[dateKey];
     lsSet('plan', plan);
     buzz(25);
-    ov.remove();
-    calScreen(offset);
+    history.back();
   }
   function renderPick(q){
     const found = recipes.filter(r=>matchRecipe(r,q)).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
@@ -656,7 +688,7 @@ function pickMeal(dateKey, slotKey, offset){
     if(t) setEntry({ txt: t });
   };
   if(existing) document.getElementById('p-rm').onclick = ()=>setEntry(null);
-  document.getElementById('p-close').onclick = ()=>ov.remove();
+  document.getElementById('p-close').onclick = ()=>history.back();
 }
 
 /* ============ frigo / congel ============ */
@@ -664,27 +696,57 @@ function listScreen(kind){
   leaveCook(); closeOverlay();
   const title = kind==='frigo' ? 'Frigo' : 'Congel';
   app.innerHTML = '';
-  app.appendChild(topbar(title, home));
+  app.appendChild(topbar(title));
   const box = document.createElement('div');
   box.innerHTML = `
-    <div class="addrow"><input type="text" id="l-add" placeholder="Ajouter un article…"><button id="l-ok">+</button></div>
+    <div class="addrow">
+      <input type="text" id="l-add" placeholder="Article…" style="flex:2;min-width:0">
+      <input type="text" id="l-qty" placeholder="Qté (2, 500 g…)" style="flex:1.3;min-width:0">
+      <button id="l-ok">+</button>
+    </div>
     <div class="card" id="l-list"></div>
-    <p class="note" style="margin-top:10px">🛒 envoie l'article dans la liste de courses (quand il n'en reste plus, par exemple).</p>`;
+    <p class="note" style="margin-top:10px">Touche un article pour modifier son nom ou sa quantité. 🛒 l'envoie dans la liste de courses (quand il n'en reste plus, par exemple).</p>`;
   app.appendChild(box);
+  let editIdx = null;
   function data(){ return kind==='frigo' ? frigo : congel; }
   function save(arr){ if(kind==='frigo'){ frigo = arr; lsSet('frigo', frigo); } else { congel = arr; lsSet('congel', congel); } }
   function render(){
     const arr = data();
     document.getElementById('l-list').innerHTML = arr.length
-      ? arr.map((it,k)=>`<div class="item">
-          <span class="nm">${esc(it.n)}</span>
-          <button class="iconbtn" data-buy="${k}" title="Ajouter aux courses">🛒</button>
-          <button class="iconbtn del" data-rm="${k}">✕</button>
-        </div>`).join('')
+      ? arr.map((it,k)=> k===editIdx
+        ? `<div class="item">
+            <input type="text" class="ed-n" value="${esc(it.n)}" style="flex:2;min-width:0">
+            <input type="text" class="ed-q" value="${esc(it.q||'')}" placeholder="Qté" style="flex:1;min-width:0">
+            <button class="iconbtn" id="ed-ok" style="background:var(--olive);border-color:var(--olive);color:#fff">✓</button>
+          </div>`
+        : `<div class="item" data-edit="${k}">
+            <span class="nm">${esc(it.n)}</span>
+            ${it.q ? `<span class="qy">${esc(it.q)}</span>` : ''}
+            <button class="iconbtn" data-buy="${k}" title="Ajouter aux courses">🛒</button>
+            <button class="iconbtn del" data-rm="${k}">✕</button>
+          </div>`).join('')
       : '<div class="empty">Rien pour l\u2019instant.<br>Ajoute ce que tu as en stock !</div>';
-    document.querySelectorAll('[data-rm]').forEach(b=>{ b.onclick = ()=>{
-      const arr = data(); arr.splice(+b.dataset.rm,1); save(arr); render(); }; });
-    document.querySelectorAll('[data-buy]').forEach(b=>{ b.onclick = ()=>{
+    document.querySelectorAll('#l-list [data-edit]').forEach(row=>{ row.onclick = e=>{
+      if(e.target.closest('.iconbtn')) return;
+      editIdx = +row.dataset.edit; render();
+      const f = document.querySelector('#l-list .ed-q'); if(f) f.focus();
+    }; });
+    const ok = document.getElementById('ed-ok');
+    if(ok){
+      const commit = ()=>{
+        const arr = data();
+        const n = document.querySelector('#l-list .ed-n').value.trim();
+        const q = document.querySelector('#l-list .ed-q').value.trim();
+        if(n){ arr[editIdx].n = n; }
+        arr[editIdx].q = q;
+        save(arr); editIdx = null; buzz(20); render();
+      };
+      ok.onclick = commit;
+      document.querySelectorAll('#l-list .ed-n, #l-list .ed-q').forEach(i=>{ i.onkeydown = e=>{ if(e.key==='Enter') commit(); }; });
+    }
+    document.querySelectorAll('#l-list [data-rm]').forEach(b=>{ b.onclick = ()=>{
+      const arr = data(); arr.splice(+b.dataset.rm,1); save(arr); editIdx = null; render(); }; });
+    document.querySelectorAll('#l-list [data-buy]').forEach(b=>{ b.onclick = ()=>{
       const it = data()[+b.dataset.buy];
       if(it && !courses.some(c=>!c.done && c.n.toLowerCase()===it.n.toLowerCase())){
         courses.push({ n:it.n, done:false }); lsSet('courses', courses);
@@ -693,11 +755,11 @@ function listScreen(kind){
     }; });
   }
   function add(){
-    const inp = document.getElementById('l-add');
+    const inp = document.getElementById('l-add'), qin = document.getElementById('l-qty');
     const v = inp.value.trim();
     if(!v) return;
-    const arr = data(); arr.push({ n:v }); save(arr);
-    inp.value = ''; inp.focus(); render();
+    const arr = data(); arr.push({ n:v, q:qin.value.trim() }); save(arr);
+    inp.value = ''; qin.value = ''; inp.focus(); editIdx = null; render();
   }
   document.getElementById('l-ok').onclick = add;
   document.getElementById('l-add').onkeydown = e=>{ if(e.key==='Enter') add(); };
@@ -707,14 +769,15 @@ function listScreen(kind){
 /* ============ liste de courses ============ */
 function coursesScreen(){
   leaveCook(); closeOverlay();
+  pushScreen({ screen:'courses' });
   app.innerHTML = '';
-  app.appendChild(topbar('Liste de courses', home));
+  app.appendChild(topbar('Liste de courses'));
   const box = document.createElement('div');
   box.innerHTML = `
     <div class="addrow"><input type="text" id="c-add" placeholder="Ajouter un article…"><button id="c-ok">+</button></div>
     <div class="card" id="c-list"></div>
     <button class="ghost" id="c-clear" style="margin-top:10px">Vider les articles cochés</button>
-    <p class="note" style="margin-top:10px">Astuce : depuis une recette, « 🛒 + courses » ajoute tous ses ingrédients ici d'un coup.</p>`;
+    <p class="note" style="margin-top:10px">🧊 = acheté : l'article quitte la liste et part dans le frigo. Astuce : depuis une recette, « 🛒 + courses » ajoute tous ses ingrédients ici d'un coup.</p>`;
   app.appendChild(box);
   function render(){
     const sorted = courses.map((c,k)=>({c,k})).sort((a,b)=>(a.c.done?1:0)-(b.c.done?1:0));
@@ -722,11 +785,20 @@ function coursesScreen(){
       ? sorted.map(({c,k})=>`<div class="item ${c.done?'done':''}">
           <button class="chk" data-k="${k}" style="width:26px;height:26px;border-radius:9px">${c.done?'✓':''}</button>
           <span class="nm">${esc(c.n)}</span>
+          <button class="iconbtn" data-fridge="${k}" title="Acheté → frigo">🧊</button>
           <button class="iconbtn del" data-rm="${k}">✕</button>
         </div>`).join('')
       : '<div class="empty">Liste vide.<br>Ajoute un article, ou les ingrédients d\u2019une recette !</div>';
     document.querySelectorAll('#c-list .chk').forEach(b=>{ b.onclick = ()=>{
       const k = +b.dataset.k; courses[k].done = !courses[k].done; lsSet('courses', courses); buzz(20); render(); }; });
+    document.querySelectorAll('#c-list [data-fridge]').forEach(b=>{ b.onclick = ()=>{
+      const it = courses[+b.dataset.fridge];
+      if(it){
+        if(!frigo.some(f=>f.n.toLowerCase()===it.n.toLowerCase())){ frigo.push({ n:it.n, q:'' }); lsSet('frigo', frigo); }
+        courses.splice(+b.dataset.fridge,1); lsSet('courses', courses);
+        buzz(25); render();
+      }
+    }; });
     document.querySelectorAll('#c-list [data-rm]').forEach(b=>{ b.onclick = ()=>{
       courses.splice(+b.dataset.rm,1); lsSet('courses', courses); render(); }; });
   }
@@ -748,8 +820,9 @@ function coursesScreen(){
 /* ============ options ============ */
 function settingsScreen(){
   leaveCook(); closeOverlay();
+  pushScreen({ screen:'settings' });
   app.innerHTML = '';
-  app.appendChild(topbar('Options', home));
+  app.appendChild(topbar('Options'));
   const box = document.createElement('div');
   box.innerHTML = `
     <div class="card">
@@ -819,6 +892,8 @@ function settingsScreen(){
 if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
+try{ history.replaceState({ screen:'home' }, ''); }catch(e){}
+fromPop = true;
 home();
 </script>
 </body>
