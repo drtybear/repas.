@@ -110,13 +110,13 @@ input:focus, textarea:focus, select:focus{ outline:2px solid var(--accent); outl
 .dot.m{ background:var(--honey); } .dot.d{ background:var(--accent); } .dot.s{ background:var(--night); }
 
 /* listes frigo / congel / courses */
-.item{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1.5px dashed var(--line); }
+.item{ display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1.5px dashed var(--line); }
 .item:last-child{ border-bottom:none; }
 .item .nm{ flex:1; font-size:15.5px; }
 .item .qy{ color:var(--muted); font-size:14px; white-space:nowrap; }
 .item.done .nm{ text-decoration:line-through; color:var(--muted); }
-.iconbtn{ border:1.5px solid var(--line); background:var(--bg); border-radius:10px; width:36px; height:36px;
-  font-size:15px; cursor:pointer; flex-shrink:0; color:var(--ink); }
+.iconbtn{ border:1.5px solid var(--line); background:var(--bg); border-radius:10px; width:34px; height:34px;
+  font-size:14px; cursor:pointer; flex-shrink:0; color:var(--ink); padding:0; }
 .iconbtn.del{ color:var(--danger); }
 .addrow{ display:flex; gap:8px; margin-bottom:14px; }
 .addrow input{ flex:1; }
@@ -262,16 +262,21 @@ function topbar(title){
   const tb = document.createElement('div');
   tb.className = 'topbar';
   tb.innerHTML = '<button class="back">‹ Retour</button><div class="screen-title">'+esc(title)+'</div>';
-  tb.querySelector('.back').onclick = ()=>history.back();
+  tb.querySelector('.back').onclick = goBack;
   return tb;
 }
 function closeOverlay(){ const o = document.querySelector('.overlay'); if(o) o.remove(); }
 
-/* ============ navigation (geste retour du téléphone) ============ */
+/* ============ navigation (bouton retour + geste du téléphone) ============ */
+let stack = [{ screen:'home' }];
+let histOK = false;
+try{ history.replaceState({ i:0 }, ''); histOK = !!(history.state && history.state.i===0); }catch(e){}
 let fromPop = false;
+let ovPushed = false;
 function pushScreen(st){
   if(fromPop){ fromPop = false; return; }
-  try{ history.pushState(st, ''); }catch(e){}
+  stack.push(st);
+  if(histOK){ try{ history.pushState({ i: stack.length-1 }, ''); }catch(e){} }
 }
 function renderState(st){
   fromPop = true;
@@ -285,10 +290,25 @@ function renderState(st){
   else if(st.screen==='settings') settingsScreen();
   else home();
 }
+function goBack(){
+  const o = document.querySelector('.overlay');
+  if(o){
+    if(histOK && ovPushed){ history.back(); }
+    else { o.remove(); ovPushed = false; renderState(stack[stack.length-1]); }
+    return;
+  }
+  if(stack.length>1){
+    if(histOK){ history.back(); }
+    else { stack.pop(); renderState(stack[stack.length-1]); }
+  }
+}
 window.addEventListener('popstate', e=>{
   const o = document.querySelector('.overlay');
-  if(o) o.remove();
-  renderState(e.state);
+  if(o){ o.remove(); ovPushed = false; renderState(stack[stack.length-1]); return; }
+  let i = (e.state && typeof e.state.i==='number') ? e.state.i : 0;
+  if(i > stack.length-1) i = stack.length-1;
+  stack.length = i+1;
+  renderState(stack[i]);
 });
 
 /* ============ accueil ============ */
@@ -498,7 +518,7 @@ function editScreen(id){
     lsSet('recipes', recipes);
     openRecipe = draft.id;
     buzz(30);
-    history.back();
+    goBack();
   };
   document.getElementById('e-name').oninput = e=>{ draft.name = e.target.value; };
 }
@@ -592,7 +612,7 @@ function cookScreen(id){
     tick();
   }
   renderSteps(); updateProg();
-  document.getElementById('c-finish').onclick = ()=>{ buzz([60,40,60]); history.back(); };
+  document.getElementById('c-finish').onclick = ()=>{ buzz([60,40,60]); goBack(); };
 }
 
 /* ============ calendrier ============ */
@@ -664,15 +684,16 @@ function pickMeal(dateKey, slotKey, offset){
     <button class="ghost" id="p-close" style="margin-top:8px">Fermer</button>
   </div>`;
   document.body.appendChild(ov);
-  try{ history.pushState({ screen:'cal', offset:offset }, ''); }catch(e){}
-  ov.onclick = e=>{ if(e.target===ov) history.back(); };
+  ovPushed = histOK;
+  if(histOK){ try{ history.pushState({ i: stack.length-1, ov:1 }, ''); }catch(e){} }
+  ov.onclick = e=>{ if(e.target===ov) goBack(); };
   function setEntry(entry){
     if(!plan[dateKey]) plan[dateKey] = {};
     if(entry) plan[dateKey][slotKey] = entry; else delete plan[dateKey][slotKey];
     if(!Object.keys(plan[dateKey]).length) delete plan[dateKey];
     lsSet('plan', plan);
     buzz(25);
-    history.back();
+    goBack();
   }
   function renderPick(q){
     const found = recipes.filter(r=>matchRecipe(r,q)).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
@@ -688,7 +709,7 @@ function pickMeal(dateKey, slotKey, offset){
     if(t) setEntry({ txt: t });
   };
   if(existing) document.getElementById('p-rm').onclick = ()=>setEntry(null);
-  document.getElementById('p-close').onclick = ()=>history.back();
+  document.getElementById('p-close').onclick = ()=>goBack();
 }
 
 /* ============ frigo / congel ============ */
@@ -705,7 +726,7 @@ function listScreen(kind){
       <button id="l-ok">+</button>
     </div>
     <div class="card" id="l-list"></div>
-    <p class="note" style="margin-top:10px">Touche un article pour modifier son nom ou sa quantité. 🛒 l'envoie dans la liste de courses (quand il n'en reste plus, par exemple).</p>`;
+    <p class="note" style="margin-top:10px">Touche un article pour modifier son nom ou sa quantité. ${kind==='frigo'?'❄️ le déplace dans le congel.':'🧊 le déplace dans le frigo.'} 🛒 l'envoie dans la liste de courses.</p>`;
   app.appendChild(box);
   let editIdx = null;
   function data(){ return kind==='frigo' ? frigo : congel; }
@@ -722,6 +743,7 @@ function listScreen(kind){
         : `<div class="item" data-edit="${k}">
             <span class="nm">${esc(it.n)}</span>
             ${it.q ? `<span class="qy">${esc(it.q)}</span>` : ''}
+            <button class="iconbtn" data-move="${k}" title="${kind==='frigo'?'Déplacer au congel':'Déplacer au frigo'}">${kind==='frigo'?'❄️':'🧊'}</button>
             <button class="iconbtn" data-buy="${k}" title="Ajouter aux courses">🛒</button>
             <button class="iconbtn del" data-rm="${k}">✕</button>
           </div>`).join('')
@@ -729,7 +751,7 @@ function listScreen(kind){
     document.querySelectorAll('#l-list [data-edit]').forEach(row=>{ row.onclick = e=>{
       if(e.target.closest('.iconbtn')) return;
       editIdx = +row.dataset.edit; render();
-      const f = document.querySelector('#l-list .ed-q'); if(f) f.focus();
+      const f = document.querySelector('#l-list .ed-q'); if(f){ f.focus(); f.select(); }
     }; });
     const ok = document.getElementById('ed-ok');
     if(ok){
@@ -742,7 +764,7 @@ function listScreen(kind){
         save(arr); editIdx = null; buzz(20); render();
       };
       ok.onclick = commit;
-      document.querySelectorAll('#l-list .ed-n, #l-list .ed-q').forEach(i=>{ i.onkeydown = e=>{ if(e.key==='Enter') commit(); }; });
+      document.querySelectorAll('#l-list .ed-n, #l-list .ed-q').forEach(i=>{ i.onkeydown = e=>{ if(e.key==='Enter') commit(); }; i.onfocus = ()=>i.select(); });
     }
     document.querySelectorAll('#l-list [data-rm]').forEach(b=>{ b.onclick = ()=>{
       const arr = data(); arr.splice(+b.dataset.rm,1); save(arr); editIdx = null; render(); }; });
@@ -752,6 +774,14 @@ function listScreen(kind){
         courses.push({ n:it.n, done:false }); lsSet('courses', courses);
       }
       buzz(25); b.textContent = '✓'; setTimeout(()=>{ b.textContent='🛒'; }, 1200);
+    }; });
+    document.querySelectorAll('#l-list [data-move]').forEach(b=>{ b.onclick = ()=>{
+      const arr = data(); const k = +b.dataset.move; const it = arr[k];
+      if(!it) return;
+      const tgt = kind==='frigo' ? congel : frigo;
+      if(!tgt.some(x=>x.n.toLowerCase()===it.n.toLowerCase())) tgt.push({ n:it.n, q:it.q||'' });
+      lsSet(kind==='frigo' ? 'congel' : 'frigo', tgt);
+      arr.splice(k,1); save(arr); editIdx = null; buzz(25); render();
     }; });
   }
   function add(){
@@ -777,7 +807,7 @@ function coursesScreen(){
     <div class="addrow"><input type="text" id="c-add" placeholder="Ajouter un article…"><button id="c-ok">+</button></div>
     <div class="card" id="c-list"></div>
     <button class="ghost" id="c-clear" style="margin-top:10px">Vider les articles cochés</button>
-    <p class="note" style="margin-top:10px">🧊 = acheté : l'article quitte la liste et part dans le frigo. Astuce : depuis une recette, « 🛒 + courses » ajoute tous ses ingrédients ici d'un coup.</p>`;
+    <p class="note" style="margin-top:10px">🧊 ou ❄️ = acheté : l'article quitte la liste et part dans le frigo ou le congel. Astuce : depuis une recette, « 🛒 + courses » ajoute tous ses ingrédients ici d'un coup.</p>`;
   app.appendChild(box);
   function render(){
     const sorted = courses.map((c,k)=>({c,k})).sort((a,b)=>(a.c.done?1:0)-(b.c.done?1:0));
@@ -786,19 +816,21 @@ function coursesScreen(){
           <button class="chk" data-k="${k}" style="width:26px;height:26px;border-radius:9px">${c.done?'✓':''}</button>
           <span class="nm">${esc(c.n)}</span>
           <button class="iconbtn" data-fridge="${k}" title="Acheté → frigo">🧊</button>
+          <button class="iconbtn" data-freeze="${k}" title="Acheté → congel">❄️</button>
           <button class="iconbtn del" data-rm="${k}">✕</button>
         </div>`).join('')
       : '<div class="empty">Liste vide.<br>Ajoute un article, ou les ingrédients d\u2019une recette !</div>';
     document.querySelectorAll('#c-list .chk').forEach(b=>{ b.onclick = ()=>{
       const k = +b.dataset.k; courses[k].done = !courses[k].done; lsSet('courses', courses); buzz(20); render(); }; });
-    document.querySelectorAll('#c-list [data-fridge]').forEach(b=>{ b.onclick = ()=>{
-      const it = courses[+b.dataset.fridge];
-      if(it){
-        if(!frigo.some(f=>f.n.toLowerCase()===it.n.toLowerCase())){ frigo.push({ n:it.n, q:'' }); lsSet('frigo', frigo); }
-        courses.splice(+b.dataset.fridge,1); lsSet('courses', courses);
-        buzz(25); render();
-      }
-    }; });
+    function bought(k, target, key){
+      const it = courses[k];
+      if(!it) return;
+      if(!target.some(f=>f.n.toLowerCase()===it.n.toLowerCase())){ target.push({ n:it.n, q:'' }); lsSet(key, target); }
+      courses.splice(k,1); lsSet('courses', courses);
+      buzz(25); render();
+    }
+    document.querySelectorAll('#c-list [data-fridge]').forEach(b=>{ b.onclick = ()=>bought(+b.dataset.fridge, frigo, 'frigo'); });
+    document.querySelectorAll('#c-list [data-freeze]').forEach(b=>{ b.onclick = ()=>bought(+b.dataset.freeze, congel, 'congel'); });
     document.querySelectorAll('#c-list [data-rm]').forEach(b=>{ b.onclick = ()=>{
       courses.splice(+b.dataset.rm,1); lsSet('courses', courses); render(); }; });
   }
@@ -892,7 +924,6 @@ function settingsScreen(){
 if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
-try{ history.replaceState({ screen:'home' }, ''); }catch(e){}
 fromPop = true;
 home();
 </script>
