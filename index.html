@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#c2451f">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>repas.</title>
+<style>
+:root{
+  --bg:#faf5ec; --card:#fffdf8; --ink:#27211b; --muted:#8a7f72;
+  --accent:#c2451f; --accent-soft:#f6e3d9; --olive:#5d6e44; --olive-soft:#e8ecdc;
+  --honey:#b4842c; --honey-soft:#f5ecd8; --night:#5b5e8d; --night-soft:#e6e7f2;
+  --line:#e8dfd2; --danger:#a33327; --r:16px;
+}
+*{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html,body{ background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:16px; line-height:1.45; }
+#app{ max-width:560px; margin:0 auto; padding:14px 16px calc(34px + env(safe-area-inset-bottom)); min-height:100vh; }
+.topbar{ display:flex; align-items:center; gap:10px; padding:8px 0 16px; }
+.back{ border:1.5px solid var(--line); background:var(--card); color:var(--ink);
+  border-radius:12px; padding:8px 13px; font-size:15px; font-weight:600; cursor:pointer; }
+.brand{ font-size:30px; font-weight:800; letter-spacing:-0.5px; }
+.brand b{ color:var(--accent); }
+.screen-title{ font-size:22px; font-weight:800; letter-spacing:-0.3px; }
+h2.sec{ font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
+  color:var(--muted); margin:20px 0 8px; }
+.card{ background:var(--card); border:1.5px solid var(--line); border-radius:var(--r);
+  padding:14px 16px; margin-bottom:10px; }
+.navcard{ display:flex; align-items:center; gap:14px; cursor:pointer; transition:transform .06s; }
+.navcard:active{ transform:scale(.985); }
+.navcard .ico{ font-size:26px; width:44px; height:44px; display:flex; align-items:center;
+  justify-content:center; border-radius:13px; background:var(--accent-soft); flex-shrink:0; }
+.navcard .t{ font-weight:700; font-size:17px; }
+.navcard .s{ color:var(--muted); font-size:13.5px; }
+.navcard .chev{ margin-left:auto; color:var(--muted); font-size:20px; }
+.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.grid2 .card{ margin-bottom:0; }
+button.primary{ width:100%; border:none; background:var(--accent); color:#fff; font-size:16.5px;
+  font-weight:700; padding:14px; border-radius:14px; cursor:pointer; }
+button.ghost{ width:100%; border:1.5px solid var(--line); background:var(--card); color:var(--ink);
+  font-size:15.5px; font-weight:600; padding:12px; border-radius:14px; cursor:pointer; }
+button:disabled{ opacity:.45; }
+input[type=text], input[type=number], input[type=search], textarea, select{
+  width:100%; border:1.5px solid var(--line); background:var(--card); color:var(--ink);
+  border-radius:12px; padding:11px 12px; font-size:16px; font-family:inherit; }
+textarea{ resize:vertical; min-height:54px; }
+input:focus, textarea:focus, select:focus{ outline:2px solid var(--accent); outline-offset:1px; border-color:transparent; }
+.pill{ display:inline-block; font-size:12px; font-weight:700; padding:3px 9px; border-radius:99px; }
+.pill.entree{ background:var(--olive-soft); color:var(--olive); }
+.pill.plat{ background:var(--accent-soft); color:var(--accent); }
+.pill.dessert{ background:var(--honey-soft); color:var(--honey); }
+.row{ display:flex; gap:8px; align-items:center; }
+.note{ color:var(--muted); font-size:13.5px; }
+.empty{ text-align:center; color:var(--muted); padding:26px 10px; font-size:14.5px; }
+
+/* recettes */
+.rcard{ cursor:pointer; }
+.rhead{ display:flex; align-items:center; gap:10px; }
+.rhead .name{ font-weight:700; font-size:16.5px; flex:1; }
+.rbody{ margin-top:12px; border-top:1.5px dashed var(--line); padding-top:12px; }
+.ing{ display:flex; justify-content:space-between; gap:10px; padding:3px 0; font-size:15px; }
+.ing .q{ color:var(--muted); white-space:nowrap; }
+.ractions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+.ractions button{ border:1.5px solid var(--line); background:var(--bg); color:var(--ink);
+  font-size:14.5px; font-weight:600; padding:10px 6px; border-radius:12px; cursor:pointer; }
+.ractions button.go{ background:var(--accent); border-color:var(--accent); color:#fff; grid-column:1 / -1; font-size:15.5px; padding:12px; }
+.ractions button.warn{ color:var(--danger); }
+
+/* cuisine */
+.serves{ display:flex; align-items:center; justify-content:center; gap:14px; margin:6px 0 2px; }
+.serves button{ width:44px; height:44px; border-radius:13px; border:1.5px solid var(--line);
+  background:var(--card); font-size:22px; font-weight:700; color:var(--accent); cursor:pointer; }
+.serves .n{ font-size:18px; font-weight:800; min-width:120px; text-align:center; }
+.step{ display:flex; gap:12px; align-items:flex-start; }
+.step.done{ opacity:.55; }
+.step.done .txt{ text-decoration:line-through; }
+.chk{ width:26px; height:26px; border-radius:9px; border:2px solid var(--line); background:var(--card);
+  flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:16px; color:#fff; cursor:pointer; margin-top:1px; }
+.step.done .chk{ background:var(--olive); border-color:var(--olive); }
+.step .txt{ flex:1; font-size:15.5px; }
+.tbtn{ margin-top:8px; border:1.5px solid var(--accent); background:var(--accent-soft); color:var(--accent);
+  font-weight:700; font-size:14.5px; padding:7px 13px; border-radius:99px; cursor:pointer; font-variant-numeric:tabular-nums; }
+.tbtn.run{ background:var(--accent); color:#fff; }
+.tbtn.over{ background:var(--olive); border-color:var(--olive); color:#fff; }
+.progress{ height:7px; background:var(--line); border-radius:99px; overflow:hidden; margin:10px 0 16px; }
+.progress i{ display:block; height:100%; background:var(--olive); border-radius:99px; transition:width .25s; }
+
+/* calendrier */
+.weeknav{ display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.weeknav button{ width:44px; height:40px; border:1.5px solid var(--line); background:var(--card);
+  border-radius:12px; font-size:18px; cursor:pointer; color:var(--ink); }
+.weeknav .lbl{ flex:1; text-align:center; font-weight:700; font-size:15.5px; }
+.day{ padding:12px 14px; }
+.day.today{ border-color:var(--accent); border-width:2px; }
+.day .dn{ font-weight:800; font-size:15px; margin-bottom:8px; }
+.day .dn small{ color:var(--muted); font-weight:600; margin-left:6px; }
+.slots{ display:grid; gap:6px; }
+.slot{ display:flex; align-items:center; gap:9px; border:1.5px solid var(--line); border-radius:11px;
+  padding:8px 11px; cursor:pointer; background:var(--bg); }
+.slot .dot{ width:10px; height:10px; border-radius:99px; flex-shrink:0; }
+.slot .sl{ font-size:12px; font-weight:700; color:var(--muted); width:52px; flex-shrink:0; }
+.slot .sv{ font-size:14.5px; font-weight:600; flex:1; }
+.slot .sv.none{ color:var(--muted); font-weight:500; }
+.dot.m{ background:var(--honey); } .dot.d{ background:var(--accent); } .dot.s{ background:var(--night); }
+
+/* listes frigo / congel / courses */
+.item{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1.5px dashed var(--line); }
+.item:last-child{ border-bottom:none; }
+.item .nm{ flex:1; font-size:15.5px; }
+.item .qy{ color:var(--muted); font-size:14px; white-space:nowrap; }
+.item.done .nm{ text-decoration:line-through; color:var(--muted); }
+.iconbtn{ border:1.5px solid var(--line); background:var(--bg); border-radius:10px; width:36px; height:36px;
+  font-size:15px; cursor:pointer; flex-shrink:0; color:var(--ink); }
+.iconbtn.del{ color:var(--danger); }
+.addrow{ display:flex; gap:8px; margin-bottom:14px; }
+.addrow input{ flex:1; }
+.addrow button{ border:none; background:var(--accent); color:#fff; border-radius:12px; width:50px;
+  font-size:22px; font-weight:700; cursor:pointer; flex-shrink:0; }
+
+/* éditeur */
+.seg{ display:flex; gap:6px; }
+.seg button{ flex:1; border:1.5px solid var(--line); background:var(--card); color:var(--ink);
+  padding:10px 4px; border-radius:12px; font-size:14.5px; font-weight:600; cursor:pointer; }
+.seg button.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:13px; font-weight:700; color:var(--muted); margin-bottom:6px;
+  text-transform:uppercase; letter-spacing:0.05em; }
+.ingrow{ display:flex; gap:6px; margin-bottom:6px; }
+.ingrow .i-n{ flex:3; } .ingrow .i-q{ flex:1.1; min-width:0; } .ingrow .i-u{ flex:1.3; min-width:0; }
+.steprow{ display:flex; gap:6px; margin-bottom:6px; align-items:flex-start; }
+.steprow .num{ width:26px; padding-top:12px; text-align:center; font-weight:800; color:var(--muted); flex-shrink:0; }
+.steprow textarea{ flex:1; }
+.steprow .t-m{ width:74px; flex-shrink:0; }
+.rm{ border:none; background:none; color:var(--danger); font-size:17px; cursor:pointer; padding:10px 4px; flex-shrink:0; }
+
+/* options */
+.optrow{ display:flex; align-items:center; gap:12px; padding:13px 0; border-bottom:1.5px dashed var(--line); }
+.optrow:last-child{ border-bottom:none; }
+.optrow .ot{ flex:1; } .optrow .ot b{ display:block; font-size:15.5px; }
+.optrow .ot span{ color:var(--muted); font-size:13px; }
+.switch{ width:52px; height:30px; border-radius:99px; background:var(--line); position:relative;
+  cursor:pointer; flex-shrink:0; border:none; transition:background .15s; }
+.switch::after{ content:''; position:absolute; top:3px; left:3px; width:24px; height:24px;
+  border-radius:99px; background:#fff; transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+.switch.on{ background:var(--olive); } .switch.on::after{ left:25px; }
+
+/* overlay picker */
+.overlay{ position:fixed; inset:0; background:rgba(39,33,27,.45); display:flex; align-items:flex-end;
+  justify-content:center; z-index:50; }
+.sheet{ background:var(--bg); border-radius:20px 20px 0 0; width:100%; max-width:560px;
+  max-height:82vh; overflow-y:auto; padding:18px 16px calc(20px + env(safe-area-inset-bottom)); }
+.sheet h3{ font-size:17px; font-weight:800; margin-bottom:12px; }
+.pickitem{ display:flex; align-items:center; gap:10px; padding:11px 4px; border-bottom:1.5px dashed var(--line);
+  cursor:pointer; font-size:15.5px; font-weight:600; }
+.searchbar{ margin-bottom:12px; }
+@media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ============ stockage ============ */
+const MEM = {};
+function lsGet(k, def){
+  try{ const v = localStorage.getItem('repas:'+k); return v===null ? (k in MEM ? MEM[k] : def) : JSON.parse(v); }
+  catch(e){ return k in MEM ? MEM[k] : def; }
+}
+function lsSet(k, v){
+  MEM[k] = v;
+  try{ localStorage.setItem('repas:'+k, JSON.stringify(v)); }catch(e){}
+}
+
+/* ============ données ============ */
+const TYPES = { entree:'Entrée', plat:'Plat', dessert:'Dessert' };
+const SLOTS = [ {k:'m', lbl:'Matin', cls:'m'}, {k:'d', lbl:'Midi', cls:'d'}, {k:'s', lbl:'Soir', cls:'s'} ];
+const DAYS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+const MONTHS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+
+function seedRecipes(){
+  return [
+    { id:'r1', name:'Pâtes à la carbonara', type:'plat', serves:2, created:Date.now(),
+      ings:[ {n:'Spaghetti', q:200, u:'g'}, {n:'Lardons', q:150, u:'g'}, {n:'Œufs', q:2, u:''}, {n:'Parmesan râpé', q:50, u:'g'}, {n:'Poivre', q:null, u:''} ],
+      steps:[ {t:'Porter une grande casserole d\'eau salée à ébullition.', m:null},
+              {t:'Cuire les spaghetti.', m:10},
+              {t:'Pendant ce temps, faire revenir les lardons à sec dans une poêle.', m:5},
+              {t:'Battre les œufs avec le parmesan et beaucoup de poivre.', m:null},
+              {t:'Égoutter les pâtes (garder un peu d\'eau), mélanger hors du feu avec les lardons puis le mélange œufs-parmesan.', m:null} ] },
+    { id:'r2', name:'Soupe de légumes', type:'entree', serves:4, created:Date.now(),
+      ings:[ {n:'Carottes', q:3, u:''}, {n:'Pommes de terre', q:2, u:''}, {n:'Poireau', q:1, u:''}, {n:'Oignon', q:1, u:''}, {n:'Bouillon de légumes', q:1, u:'cube'} ],
+      steps:[ {t:'Éplucher et couper tous les légumes en morceaux.', m:null},
+              {t:'Faire revenir l\'oignon dans un peu d\'huile.', m:3},
+              {t:'Ajouter les légumes, couvrir d\'eau, ajouter le bouillon.', m:null},
+              {t:'Laisser mijoter à couvert.', m:25},
+              {t:'Mixer et ajuster l\'assaisonnement.', m:null} ] },
+    { id:'r3', name:'Crumble aux pommes', type:'dessert', serves:4, created:Date.now(),
+      ings:[ {n:'Pommes', q:4, u:''}, {n:'Farine', q:150, u:'g'}, {n:'Beurre froid', q:100, u:'g'}, {n:'Sucre', q:100, u:'g'} ],
+      steps:[ {t:'Préchauffer le four à 180 °C.', m:null},
+              {t:'Éplucher et couper les pommes, les répartir dans un plat.', m:null},
+              {t:'Mélanger farine, sucre et beurre du bout des doigts pour obtenir un sable grossier.', m:null},
+              {t:'Répartir le crumble sur les pommes et enfourner.', m:35} ] }
+  ];
+}
+let recipes = lsGet('recipes', null);
+if(!recipes){ recipes = seedRecipes(); lsSet('recipes', recipes); }
+let plan = lsGet('plan', {});
+let frigo = lsGet('frigo', []);
+let congel = lsGet('congel', []);
+let courses = lsGet('courses', []);
+
+function loadPref(k, def){ try{ const v = localStorage.getItem('repas:pref:'+k); return v===null?def:v==='1'; }catch(e){ return def; } }
+function savePref(k, v){ try{ localStorage.setItem('repas:pref:'+k, v?'1':'0'); }catch(e){} }
+let prefs = { vib: loadPref('vib', true), son: loadPref('son', true), veille: loadPref('veille', true) };
+
+/* ============ utilitaires ============ */
+const app = document.getElementById('app');
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function uid(){ return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function fmtQ(q){
+  if(q===null || q===undefined || q==='') return '';
+  const v = Math.round(q*100)/100;
+  return String(v).replace('.', ',');
+}
+function buzz(p){ if(prefs.vib && navigator.vibrate){ try{ navigator.vibrate(p||40); }catch(e){} } }
+let audioCtx = null;
+function beep(times){
+  if(!prefs.son) return;
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const n = times||3;
+    for(let i=0;i<n;i++){
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.frequency.value = 880; o.type = 'sine';
+      const t = audioCtx.currentTime + i*0.35;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.3, t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+0.28);
+      o.start(t); o.stop(t+0.3);
+    }
+  }catch(e){}
+}
+let wakeLock = null;
+async function lockScreen(){
+  if(!prefs.veille) return;
+  try{ wakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
+}
+function unlockScreen(){ try{ if(wakeLock){ wakeLock.release(); wakeLock = null; } }catch(e){} }
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && wakeLock===null && inCook) lockScreen(); });
+
+let cookTimers = {};
+let inCook = false;
+function clearTimers(){ Object.values(cookTimers).forEach(t=>clearInterval(t.int)); cookTimers = {}; }
+function leaveCook(){ clearTimers(); unlockScreen(); inCook = false; }
+
+function topbar(title, onBack){
+  const tb = document.createElement('div');
+  tb.className = 'topbar';
+  tb.innerHTML = '<button class="back">‹ Retour</button><div class="screen-title">'+esc(title)+'</div>';
+  tb.querySelector('.back').onclick = onBack;
+  return tb;
+}
+function closeOverlay(){ const o = document.querySelector('.overlay'); if(o) o.remove(); }
+
+/* ============ accueil ============ */
+function home(){
+  leaveCook(); closeOverlay();
+  const nC = courses.filter(c=>!c.done).length;
+  const todayKey = isoDate(new Date());
+  const tp = plan[todayKey] || {};
+  const nToday = SLOTS.filter(s=>tp[s.k]).length;
+  app.innerHTML = '';
+  const h = document.createElement('div');
+  h.innerHTML = `
+    <div class="topbar"><div class="brand">repas<b>.</b></div></div>
+    <div class="card navcard" id="goCal">
+      <div class="ico">📅</div>
+      <div><div class="t">Calendrier de la semaine</div>
+      <div class="s">${nToday ? nToday+' repas prévu'+(nToday>1?'s':'')+' aujourd\u2019hui' : 'Rien de prévu aujourd\u2019hui'}</div></div>
+      <div class="chev">›</div>
+    </div>
+    <div class="card navcard" id="goRec">
+      <div class="ico">📖</div>
+      <div><div class="t">Mes recettes</div><div class="s">${recipes.length} recette${recipes.length>1?'s':''}</div></div>
+      <div class="chev">›</div>
+    </div>
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="card navcard" id="goFrigo">
+        <div class="ico" style="background:var(--night-soft)">🧊</div>
+        <div><div class="t">Frigo</div><div class="s">${frigo.length} article${frigo.length>1?'s':''}</div></div>
+      </div>
+      <div class="card navcard" id="goCongel">
+        <div class="ico" style="background:var(--night-soft)">❄️</div>
+        <div><div class="t">Congel</div><div class="s">${congel.length} article${congel.length>1?'s':''}</div></div>
+      </div>
+    </div>
+    <div class="card navcard" id="goCourses">
+      <div class="ico" style="background:var(--olive-soft)">🛒</div>
+      <div><div class="t">Liste de courses</div><div class="s">${nC ? nC+' à acheter' : 'Liste vide'}</div></div>
+      <div class="chev">›</div>
+    </div>
+    <div class="card navcard" id="goOpt">
+      <div class="ico" style="background:var(--honey-soft)">⚙️</div>
+      <div><div class="t">Options</div><div class="s">Son, vibration, sauvegarde…</div></div>
+      <div class="chev">›</div>
+    </div>`;
+  app.appendChild(h);
+  document.getElementById('goCal').onclick = ()=>calScreen(0);
+  document.getElementById('goRec').onclick = ()=>recipesScreen('');
+  document.getElementById('goFrigo').onclick = ()=>listScreen('frigo');
+  document.getElementById('goCongel').onclick = ()=>listScreen('congel');
+  document.getElementById('goCourses').onclick = coursesScreen;
+  document.getElementById('goOpt').onclick = settingsScreen;
+}
+
+/* ============ recettes ============ */
+let openRecipe = null;
+function matchRecipe(r, q){
+  if(!q) return true;
+  const s = q.toLowerCase();
+  if(r.name.toLowerCase().includes(s)) return true;
+  return r.ings.some(i=>i.n.toLowerCase().includes(s));
+}
+function recipesScreen(query){
+  leaveCook(); closeOverlay();
+  app.innerHTML = '';
+  app.appendChild(topbar('Mes recettes', home));
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <div class="searchbar"><input type="search" id="rq" placeholder="Rechercher un nom ou un aliment…" value="${esc(query)}"></div>
+    <button class="primary" id="newR" style="margin-bottom:14px">+ Nouvelle recette</button>
+    <div id="rlist"></div>`;
+  app.appendChild(box);
+  document.getElementById('newR').onclick = ()=>editScreen(null);
+  const inp = document.getElementById('rq');
+  inp.oninput = ()=>renderList(inp.value);
+  function renderList(q){
+    const list = document.getElementById('rlist');
+    const found = recipes.filter(r=>matchRecipe(r,q)).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+    if(!found.length){ list.innerHTML = '<div class="empty">Aucune recette ne correspond.<br>Ajoute-la avec le bouton ci-dessus !</div>'; return; }
+    list.innerHTML = found.map(r=>{
+      const open = openRecipe===r.id;
+      return `<div class="card rcard" data-id="${r.id}">
+        <div class="rhead">
+          <span class="name">${esc(r.name)}</span>
+          <span class="pill ${r.type}">${TYPES[r.type]||''}</span>
+        </div>
+        ${open ? `<div class="rbody">
+          <div class="note" style="margin-bottom:8px">Pour ${r.serves} personne${r.serves>1?'s':''} · ${r.steps.length} étape${r.steps.length>1?'s':''}</div>
+          ${r.ings.map(i=>`<div class="ing"><span>${esc(i.n)}</span><span class="q">${fmtQ(i.q)}${i.u?' '+esc(i.u):''}</span></div>`).join('')}
+          <div class="ractions">
+            <button class="go" data-cook="${r.id}">▶ Cuisiner</button>
+            <button data-buy="${r.id}">🛒 + courses</button>
+            <button data-edit="${r.id}">✏️ Modifier</button>
+            <button class="warn" data-del="${r.id}" style="grid-column:1 / -1">🗑 Supprimer</button>
+          </div>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.rcard').forEach(c=>{
+      c.querySelector('.rhead').onclick = ()=>{
+        openRecipe = openRecipe===c.dataset.id ? null : c.dataset.id;
+        renderList(document.getElementById('rq').value);
+      };
+    });
+    list.querySelectorAll('[data-cook]').forEach(b=>{ b.onclick = e=>{ e.stopPropagation(); cookScreen(b.dataset.cook); }; });
+    list.querySelectorAll('[data-edit]').forEach(b=>{ b.onclick = e=>{ e.stopPropagation(); editScreen(b.dataset.edit); }; });
+    list.querySelectorAll('[data-buy]').forEach(b=>{ b.onclick = e=>{
+      e.stopPropagation();
+      const r = recipes.find(x=>x.id===b.dataset.buy);
+      if(r){ const n = addIngsToCourses(r); buzz(30); b.textContent = '✓ Ajouté ('+n+')'; setTimeout(()=>{ b.textContent='🛒 + courses'; }, 1600); }
+    }; });
+    list.querySelectorAll('[data-del]').forEach(b=>{ b.onclick = e=>{
+      e.stopPropagation();
+      const r = recipes.find(x=>x.id===b.dataset.del);
+      if(r && confirm('Supprimer « '+r.name+' » ?')){
+        recipes = recipes.filter(x=>x.id!==r.id); lsSet('recipes', recipes);
+        openRecipe = null; renderList(document.getElementById('rq').value);
+      }
+    }; });
+  }
+  renderList(query);
+}
+function addIngsToCourses(r){
+  let added = 0;
+  r.ings.forEach(i=>{
+    const exists = courses.some(c=>!c.done && c.n.toLowerCase()===i.n.toLowerCase());
+    if(!exists){ courses.push({ n:i.n, done:false }); added++; }
+  });
+  lsSet('courses', courses);
+  return added;
+}
+
+/* ============ éditeur de recette ============ */
+function editScreen(id){
+  leaveCook(); closeOverlay();
+  const existing = id ? recipes.find(r=>r.id===id) : null;
+  const draft = existing
+    ? JSON.parse(JSON.stringify(existing))
+    : { id:uid(), name:'', type:'plat', serves:2, ings:[{n:'',q:null,u:''}], steps:[{t:'',m:null}], created:Date.now() };
+  app.innerHTML = '';
+  app.appendChild(topbar(existing?'Modifier la recette':'Nouvelle recette', ()=>recipesScreen('')));
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <div class="field"><label>Nom</label><input type="text" id="e-name" placeholder="Ex : Gratin dauphinois" value="${esc(draft.name)}"></div>
+    <div class="field"><label>Type</label>
+      <div class="seg" id="e-type">${Object.keys(TYPES).map(t=>`<button data-t="${t}" class="${draft.type===t?'on':''}">${TYPES[t]}</button>`).join('')}</div>
+    </div>
+    <div class="field"><label>Nombre de personnes</label>
+      <div class="serves" style="justify-content:flex-start">
+        <button id="e-sm">−</button><div class="n" style="min-width:60px" id="e-sn">${draft.serves}</div><button id="e-sp">+</button>
+      </div>
+    </div>
+    <div class="field"><label>Ingrédients</label><div id="e-ings"></div>
+      <button class="ghost" id="e-addI" style="margin-top:4px">+ Ingrédient</button></div>
+    <div class="field"><label>Étapes <span style="text-transform:none;font-weight:500">(minuterie en minutes, facultative)</span></label><div id="e-steps"></div>
+      <button class="ghost" id="e-addS" style="margin-top:4px">+ Étape</button></div>
+    <button class="primary" id="e-save">Enregistrer la recette</button>`;
+  app.appendChild(box);
+
+  document.querySelectorAll('#e-type button').forEach(b=>{
+    b.onclick = ()=>{ draft.type = b.dataset.t;
+      document.querySelectorAll('#e-type button').forEach(x=>x.classList.toggle('on', x.dataset.t===draft.type)); };
+  });
+  document.getElementById('e-sm').onclick = ()=>{ if(draft.serves>1){ draft.serves--; document.getElementById('e-sn').textContent = draft.serves; } };
+  document.getElementById('e-sp').onclick = ()=>{ if(draft.serves<20){ draft.serves++; document.getElementById('e-sn').textContent = draft.serves; } };
+
+  function renderIngs(){
+    const b = document.getElementById('e-ings');
+    b.innerHTML = draft.ings.map((i,k)=>`<div class="ingrow">
+      <input type="text" class="i-n" data-k="${k}" placeholder="Aliment" value="${esc(i.n)}">
+      <input type="number" class="i-q" data-k="${k}" placeholder="Qté" inputmode="decimal" step="any" value="${i.q===null||i.q===undefined?'':i.q}">
+      <input type="text" class="i-u" data-k="${k}" placeholder="g, ml…" value="${esc(i.u)}">
+      <button class="rm" data-k="${k}">✕</button>
+    </div>`).join('');
+    b.querySelectorAll('.i-n').forEach(x=>{ x.oninput = ()=>{ draft.ings[+x.dataset.k].n = x.value; }; });
+    b.querySelectorAll('.i-q').forEach(x=>{ x.oninput = ()=>{ const v = parseFloat(x.value); draft.ings[+x.dataset.k].q = isNaN(v)?null:v; }; });
+    b.querySelectorAll('.i-u').forEach(x=>{ x.oninput = ()=>{ draft.ings[+x.dataset.k].u = x.value; }; });
+    b.querySelectorAll('.rm').forEach(x=>{ x.onclick = ()=>{ draft.ings.splice(+x.dataset.k,1); if(!draft.ings.length) draft.ings.push({n:'',q:null,u:''}); renderIngs(); }; });
+  }
+  function renderSteps(){
+    const b = document.getElementById('e-steps');
+    b.innerHTML = draft.steps.map((s,k)=>`<div class="steprow">
+      <div class="num">${k+1}</div>
+      <textarea data-k="${k}" placeholder="Décris l\u2019étape…">${esc(s.t)}</textarea>
+      <input type="number" class="t-m" data-k="${k}" placeholder="⏱ min" inputmode="numeric" value="${s.m===null||s.m===undefined?'':s.m}">
+      <button class="rm" data-k="${k}">✕</button>
+    </div>`).join('');
+    b.querySelectorAll('textarea').forEach(x=>{ x.oninput = ()=>{ draft.steps[+x.dataset.k].t = x.value; }; });
+    b.querySelectorAll('.t-m').forEach(x=>{ x.oninput = ()=>{ const v = parseFloat(x.value); draft.steps[+x.dataset.k].m = isNaN(v)||v<=0?null:v; }; });
+    b.querySelectorAll('.rm').forEach(x=>{ x.onclick = ()=>{ draft.steps.splice(+x.dataset.k,1); if(!draft.steps.length) draft.steps.push({t:'',m:null}); renderSteps(); }; });
+  }
+  renderIngs(); renderSteps();
+  document.getElementById('e-addI').onclick = ()=>{ draft.ings.push({n:'',q:null,u:''}); renderIngs();
+    const last = document.querySelectorAll('#e-ings .i-n'); if(last.length) last[last.length-1].focus(); };
+  document.getElementById('e-addS').onclick = ()=>{ draft.steps.push({t:'',m:null}); renderSteps();
+    const last = document.querySelectorAll('#e-steps textarea'); if(last.length) last[last.length-1].focus(); };
+
+  document.getElementById('e-save').onclick = ()=>{
+    draft.name = draft.name.trim();
+    if(!draft.name){ alert('Donne un nom à ta recette 🙂'); return; }
+    draft.ings = draft.ings.filter(i=>i.n.trim());
+    draft.steps = draft.steps.filter(s=>s.t.trim());
+    const k = recipes.findIndex(r=>r.id===draft.id);
+    if(k>=0) recipes[k] = draft; else recipes.push(draft);
+    lsSet('recipes', recipes);
+    openRecipe = draft.id;
+    buzz(30);
+    recipesScreen('');
+  };
+  document.getElementById('e-name').oninput = e=>{ draft.name = e.target.value; };
+}
+
+/* ============ mode cuisine ============ */
+function cookScreen(id){
+  const r = recipes.find(x=>x.id===id);
+  if(!r){ home(); return; }
+  leaveCook(); closeOverlay();
+  inCook = true; lockScreen();
+  let serves = r.serves;
+  const done = r.steps.map(()=>false);
+  app.innerHTML = '';
+  app.appendChild(topbar(r.name, ()=>{ leaveCook(); recipesScreen(''); }));
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <div class="card">
+      <div class="serves">
+        <button id="c-sm">−</button>
+        <div class="n" id="c-sn"></div>
+        <button id="c-sp">+</button>
+      </div>
+      <div id="c-ings" style="margin-top:8px"></div>
+    </div>
+    <h2 class="sec">Étapes</h2>
+    <div class="progress"><i id="c-prog" style="width:0%"></i></div>
+    <div id="c-steps"></div>
+    <button class="primary" id="c-finish" style="margin-top:8px">✓ Terminer</button>`;
+  app.appendChild(box);
+
+  function renderIngs(){
+    document.getElementById('c-sn').textContent = serves + ' pers.';
+    document.getElementById('c-ings').innerHTML = r.ings.map(i=>{
+      const q = (i.q===null||i.q===undefined) ? null : i.q * serves / r.serves;
+      return `<div class="ing"><span>${esc(i.n)}</span><span class="q">${q===null?'':fmtQ(q)}${i.u?' '+esc(i.u):''}</span></div>`;
+    }).join('');
+  }
+  document.getElementById('c-sm').onclick = ()=>{ if(serves>1){ serves--; renderIngs(); } };
+  document.getElementById('c-sp').onclick = ()=>{ if(serves<20){ serves++; renderIngs(); } };
+  renderIngs();
+
+  function fmtT(sec){
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec/60), s = sec%60;
+    return m + ':' + (s<10?'0':'') + s;
+  }
+  function renderSteps(){
+    const b = document.getElementById('c-steps');
+    b.innerHTML = r.steps.map((s,k)=>`
+      <div class="card step ${done[k]?'done':''}" data-k="${k}">
+        <button class="chk" data-k="${k}">${done[k]?'✓':''}</button>
+        <div style="flex:1">
+          <div class="txt">${esc(s.t)}</div>
+          ${s.m ? `<button class="tbtn" data-t="${k}">⏱ ${s.m} min</button>` : ''}
+        </div>
+      </div>`).join('');
+    b.querySelectorAll('.chk').forEach(c=>{ c.onclick = ()=>{
+      const k = +c.dataset.k; done[k] = !done[k]; buzz(20);
+      if(done[k] && cookTimers[k]){ clearInterval(cookTimers[k].int); delete cookTimers[k]; }
+      const card = b.querySelector('.step[data-k="'+k+'"]');
+      card.classList.toggle('done', done[k]); c.textContent = done[k]?'✓':'';
+      updateProg();
+    }; });
+    b.querySelectorAll('[data-t]').forEach(tb=>{ tb.onclick = ()=>toggleTimer(+tb.dataset.t, tb); });
+  }
+  function updateProg(){
+    const n = done.filter(Boolean).length;
+    document.getElementById('c-prog').style.width = (r.steps.length ? n/r.steps.length*100 : 0) + '%';
+  }
+  function toggleTimer(k, btn){
+    if(cookTimers[k]){
+      clearInterval(cookTimers[k].int); delete cookTimers[k];
+      btn.classList.remove('run','over'); btn.textContent = '⏱ ' + r.steps[k].m + ' min';
+      return;
+    }
+    const end = Date.now() + r.steps[k].m*60000;
+    btn.classList.add('run'); btn.classList.remove('over');
+    const tick = ()=>{
+      const left = (end - Date.now())/1000;
+      if(left <= 0){
+        clearInterval(cookTimers[k].int); delete cookTimers[k];
+        btn.classList.remove('run'); btn.classList.add('over');
+        btn.textContent = '✓ C\u2019est prêt !';
+        beep(4); buzz([200,100,200,100,400]);
+        return;
+      }
+      btn.textContent = '⏹ ' + fmtT(left);
+    };
+    cookTimers[k] = { int: setInterval(tick, 250) };
+    tick();
+  }
+  renderSteps(); updateProg();
+  document.getElementById('c-finish').onclick = ()=>{ buzz([60,40,60]); leaveCook(); recipesScreen(''); };
+}
+
+/* ============ calendrier ============ */
+function isoDate(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function weekStart(offset){
+  const d = new Date(); d.setHours(0,0,0,0);
+  const wd = (d.getDay()+6)%7; // lundi = 0
+  d.setDate(d.getDate() - wd + offset*7);
+  return d;
+}
+function calScreen(offset){
+  leaveCook(); closeOverlay();
+  app.innerHTML = '';
+  app.appendChild(topbar('Calendrier', home));
+  const start = weekStart(offset);
+  const end = new Date(start); end.setDate(end.getDate()+6);
+  const lbl = offset===0 ? 'Cette semaine' : (offset===1 ? 'Semaine prochaine' : (offset===-1 ? 'Semaine dernière' :
+    start.getDate()+' '+MONTHS[start.getMonth()]+' – '+end.getDate()+' '+MONTHS[end.getMonth()]));
+  const box = document.createElement('div');
+  let daysHtml = '';
+  const todayKey = isoDate(new Date());
+  for(let i=0;i<7;i++){
+    const d = new Date(start); d.setDate(d.getDate()+i);
+    const key = isoDate(d);
+    const p = plan[key] || {};
+    daysHtml += `<div class="card day ${key===todayKey?'today':''}">
+      <div class="dn">${DAYS[i]} <small>${d.getDate()} ${MONTHS[d.getMonth()]}</small></div>
+      <div class="slots">${SLOTS.map(s=>{
+        const e = p[s.k];
+        let label = '';
+        if(e){
+          if(e.rid){ const r = recipes.find(x=>x.id===e.rid); label = r ? r.name : '(recette supprimée)'; }
+          else label = e.txt || '';
+        }
+        return `<div class="slot" data-d="${key}" data-s="${s.k}">
+          <span class="dot ${s.cls}"></span><span class="sl">${s.lbl}</span>
+          <span class="sv ${e?'':'none'}">${e?esc(label):'—'}</span>
+        </div>`;
+      }).join('')}</div>
+    </div>`;
+  }
+  box.innerHTML = `
+    <div class="weeknav">
+      <button id="w-prev">‹</button><div class="lbl">${lbl}</div><button id="w-next">›</button>
+    </div>
+    ${daysHtml}`;
+  app.appendChild(box);
+  document.getElementById('w-prev').onclick = ()=>calScreen(offset-1);
+  document.getElementById('w-next').onclick = ()=>calScreen(offset+1);
+  box.querySelectorAll('.slot').forEach(sl=>{ sl.onclick = ()=>pickMeal(sl.dataset.d, sl.dataset.s, offset); });
+}
+function pickMeal(dateKey, slotKey, offset){
+  closeOverlay();
+  const slot = SLOTS.find(s=>s.k===slotKey);
+  const d = new Date(dateKey+'T12:00:00');
+  const existing = (plan[dateKey]||{})[slotKey];
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `<div class="sheet">
+    <h3>${slot.lbl} · ${DAYS[(d.getDay()+6)%7]} ${d.getDate()} ${MONTHS[d.getMonth()]}</h3>
+    <div class="searchbar"><input type="search" id="p-q" placeholder="Chercher une recette…"></div>
+    <div id="p-list"></div>
+    <h2 class="sec">Ou en texte libre</h2>
+    <div class="addrow"><input type="text" id="p-txt" placeholder="Ex : Restes, pizza, resto…" value="${existing && existing.txt ? esc(existing.txt) : ''}"><button id="p-ok">✓</button></div>
+    ${existing ? '<button class="ghost" id="p-rm" style="color:var(--danger)">Retirer ce repas</button>' : ''}
+    <button class="ghost" id="p-close" style="margin-top:8px">Fermer</button>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = e=>{ if(e.target===ov) ov.remove(); };
+  function setEntry(entry){
+    if(!plan[dateKey]) plan[dateKey] = {};
+    if(entry) plan[dateKey][slotKey] = entry; else delete plan[dateKey][slotKey];
+    if(!Object.keys(plan[dateKey]).length) delete plan[dateKey];
+    lsSet('plan', plan);
+    buzz(25);
+    ov.remove();
+    calScreen(offset);
+  }
+  function renderPick(q){
+    const found = recipes.filter(r=>matchRecipe(r,q)).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+    document.getElementById('p-list').innerHTML = found.length
+      ? found.map(r=>`<div class="pickitem" data-id="${r.id}"><span class="pill ${r.type}">${TYPES[r.type]}</span> ${esc(r.name)}</div>`).join('')
+      : '<div class="empty">Aucune recette trouvée.</div>';
+    ov.querySelectorAll('.pickitem').forEach(p=>{ p.onclick = ()=>setEntry({ rid: p.dataset.id }); });
+  }
+  renderPick('');
+  document.getElementById('p-q').oninput = e=>renderPick(e.target.value);
+  document.getElementById('p-ok').onclick = ()=>{
+    const t = document.getElementById('p-txt').value.trim();
+    if(t) setEntry({ txt: t });
+  };
+  if(existing) document.getElementById('p-rm').onclick = ()=>setEntry(null);
+  document.getElementById('p-close').onclick = ()=>ov.remove();
+}
+
+/* ============ frigo / congel ============ */
+function listScreen(kind){
+  leaveCook(); closeOverlay();
+  const title = kind==='frigo' ? 'Frigo' : 'Congel';
+  app.innerHTML = '';
+  app.appendChild(topbar(title, home));
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <div class="addrow"><input type="text" id="l-add" placeholder="Ajouter un article…"><button id="l-ok">+</button></div>
+    <div class="card" id="l-list"></div>
+    <p class="note" style="margin-top:10px">🛒 envoie l'article dans la liste de courses (quand il n'en reste plus, par exemple).</p>`;
+  app.appendChild(box);
+  function data(){ return kind==='frigo' ? frigo : congel; }
+  function save(arr){ if(kind==='frigo'){ frigo = arr; lsSet('frigo', frigo); } else { congel = arr; lsSet('congel', congel); } }
+  function render(){
+    const arr = data();
+    document.getElementById('l-list').innerHTML = arr.length
+      ? arr.map((it,k)=>`<div class="item">
+          <span class="nm">${esc(it.n)}</span>
+          <button class="iconbtn" data-buy="${k}" title="Ajouter aux courses">🛒</button>
+          <button class="iconbtn del" data-rm="${k}">✕</button>
+        </div>`).join('')
+      : '<div class="empty">Rien pour l\u2019instant.<br>Ajoute ce que tu as en stock !</div>';
+    document.querySelectorAll('[data-rm]').forEach(b=>{ b.onclick = ()=>{
+      const arr = data(); arr.splice(+b.dataset.rm,1); save(arr); render(); }; });
+    document.querySelectorAll('[data-buy]').forEach(b=>{ b.onclick = ()=>{
+      const it = data()[+b.dataset.buy];
+      if(it && !courses.some(c=>!c.done && c.n.toLowerCase()===it.n.toLowerCase())){
+        courses.push({ n:it.n, done:false }); lsSet('courses', courses);
+      }
+      buzz(25); b.textContent = '✓'; setTimeout(()=>{ b.textContent='🛒'; }, 1200);
+    }; });
+  }
+  function add(){
+    const inp = document.getElementById('l-add');
+    const v = inp.value.trim();
+    if(!v) return;
+    const arr = data(); arr.push({ n:v }); save(arr);
+    inp.value = ''; inp.focus(); render();
+  }
+  document.getElementById('l-ok').onclick = add;
+  document.getElementById('l-add').onkeydown = e=>{ if(e.key==='Enter') add(); };
+  render();
+}
+
+/* ============ liste de courses ============ */
+function coursesScreen(){
+  leaveCook(); closeOverlay();
+  app.innerHTML = '';
+  app.appendChild(topbar('Liste de courses', home));
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <div class="addrow"><input type="text" id="c-add" placeholder="Ajouter un article…"><button id="c-ok">+</button></div>
+    <div class="card" id="c-list"></div>
+    <button class="ghost" id="c-clear" style="margin-top:10px">Vider les articles cochés</button>
+    <p class="note" style="margin-top:10px">Astuce : depuis une recette, « 🛒 + courses » ajoute tous ses ingrédients ici d'un coup.</p>`;
+  app.appendChild(box);
+  function render(){
+    const sorted = courses.map((c,k)=>({c,k})).sort((a,b)=>(a.c.done?1:0)-(b.c.done?1:0));
+    document.getElementById('c-list').innerHTML = courses.length
+      ? sorted.map(({c,k})=>`<div class="item ${c.done?'done':''}">
+          <button class="chk" data-k="${k}" style="width:26px;height:26px;border-radius:9px">${c.done?'✓':''}</button>
+          <span class="nm">${esc(c.n)}</span>
+          <button class="iconbtn del" data-rm="${k}">✕</button>
+        </div>`).join('')
+      : '<div class="empty">Liste vide.<br>Ajoute un article, ou les ingrédients d\u2019une recette !</div>';
+    document.querySelectorAll('#c-list .chk').forEach(b=>{ b.onclick = ()=>{
+      const k = +b.dataset.k; courses[k].done = !courses[k].done; lsSet('courses', courses); buzz(20); render(); }; });
+    document.querySelectorAll('#c-list [data-rm]').forEach(b=>{ b.onclick = ()=>{
+      courses.splice(+b.dataset.rm,1); lsSet('courses', courses); render(); }; });
+  }
+  function add(){
+    const inp = document.getElementById('c-add');
+    const v = inp.value.trim();
+    if(!v) return;
+    courses.push({ n:v, done:false }); lsSet('courses', courses);
+    inp.value = ''; inp.focus(); render();
+  }
+  document.getElementById('c-ok').onclick = add;
+  document.getElementById('c-add').onkeydown = e=>{ if(e.key==='Enter') add(); };
+  document.getElementById('c-clear').onclick = ()=>{
+    courses = courses.filter(c=>!c.done); lsSet('courses', courses); render();
+  };
+  render();
+}
+
+/* ============ options ============ */
+function settingsScreen(){
+  leaveCook(); closeOverlay();
+  app.innerHTML = '';
+  app.appendChild(topbar('Options', home));
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <div class="card">
+      <div class="optrow">
+        <div class="ot"><b>Vibration</b><span>Petites vibrations sur les actions et fin de minuterie</span></div>
+        <button class="switch ${prefs.vib?'on':''}" data-p="vib"></button>
+      </div>
+      <div class="optrow">
+        <div class="ot"><b>Son</b><span>Bip à la fin des minuteries</span></div>
+        <button class="switch ${prefs.son?'on':''}" data-p="son"></button>
+      </div>
+      <div class="optrow">
+        <div class="ot"><b>Écran allumé en cuisine</b><span>Empêche la mise en veille pendant une recette</span></div>
+        <button class="switch ${prefs.veille?'on':''}" data-p="veille"></button>
+      </div>
+    </div>
+    <h2 class="sec">Sauvegarde</h2>
+    <div class="card">
+      <button class="ghost" id="o-export" style="margin-bottom:8px">⬇️ Exporter mes données (.json)</button>
+      <button class="ghost" id="o-import">⬆️ Importer une sauvegarde</button>
+      <input type="file" id="o-file" accept=".json,application/json" style="display:none">
+      <p class="note" style="margin-top:10px">Recettes, planning, frigo, congel et courses — tout est dans le fichier. Pratique pour changer de téléphone.</p>
+    </div>`;
+  app.appendChild(box);
+  document.querySelectorAll('.switch').forEach(s=>{ s.onclick = ()=>{
+    const p = s.dataset.p; prefs[p] = !prefs[p]; savePref(p, prefs[p]);
+    s.classList.toggle('on', prefs[p]);
+    if(p==='vib' && prefs[p]) buzz(40);
+    if(p==='son' && prefs[p]) beep(1);
+  }; });
+  document.getElementById('o-export').onclick = ()=>{
+    const data = { app:'repas', version:1, exported:new Date().toISOString(),
+      recipes, plan, frigo, congel, courses };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'repas-sauvegarde-' + isoDate(new Date()) + '.json';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  };
+  document.getElementById('o-import').onclick = ()=>document.getElementById('o-file').click();
+  document.getElementById('o-file').onchange = e=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    const rd = new FileReader();
+    rd.onload = ()=>{
+      try{
+        const data = JSON.parse(rd.result);
+        if(data.app!=='repas') throw new Error('format');
+        if(!confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')) return;
+        recipes = Array.isArray(data.recipes)?data.recipes:[];
+        plan = data.plan && typeof data.plan==='object' ? data.plan : {};
+        frigo = Array.isArray(data.frigo)?data.frigo:[];
+        congel = Array.isArray(data.congel)?data.congel:[];
+        courses = Array.isArray(data.courses)?data.courses:[];
+        lsSet('recipes', recipes); lsSet('plan', plan); lsSet('frigo', frigo);
+        lsSet('congel', congel); lsSet('courses', courses);
+        alert('Sauvegarde importée ✓');
+        home();
+      }catch(err){ alert('Ce fichier n\u2019est pas une sauvegarde repas. valide.'); }
+    };
+    rd.readAsText(f);
+  };
+}
+
+/* ============ démarrage ============ */
+if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+home();
+</script>
+</body>
+</html>
