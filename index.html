@@ -14,6 +14,20 @@
   --honey:#b4842c; --honey-soft:#f5ecd8; --night:#5b5e8d; --night-soft:#e6e7f2;
   --line:#e8dfd2; --danger:#a33327; --r:16px;
 }
+html[data-theme="dark"]{
+  --bg:#1b1712; --card:#262019; --ink:#ece4d8; --muted:#9c9082;
+  --accent:#e36b41; --accent-soft:#3c2620; --olive:#90a76c; --olive-soft:#2b3322;
+  --honey:#d6a85c; --honey-soft:#352c1c; --night:#9da0d2; --night-soft:#262a3a;
+  --line:#39322a; --danger:#e07a6c;
+}
+html[data-theme="dark"] .rnotes{ color:var(--honey); }
+html[data-theme="dark"] .item.exp-soon{ background:#3a2c1d; }
+html[data-theme="dark"] .item.exp-over{ background:#3e231e; }
+html[data-theme="dark"] .exptag.over{ background:#4a2620; color:var(--danger); }
+html[data-theme="dark"] .exptag.soon{ color:var(--honey); }
+html[data-theme="dark"] .pill.resto{ background:#322a3a; color:#bfa0d6; }
+html[data-theme="dark"] .pill.autre{ background:#2f2a22; color:#c4b8a8; }
+html[data-theme="dark"] .alarmcard .ab-go{ color:#1b1712; }
 *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
 html,body{ background:var(--bg); color:var(--ink);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -148,6 +162,10 @@ input:focus, textarea:focus, select:focus{ outline:2px solid var(--accent); outl
 .rphotos img{ width:120px; height:120px; object-fit:cover; border-radius:12px; flex-shrink:0; cursor:pointer; border:1.5px solid var(--line); }
 .rnotes{ background:var(--honey-soft); color:#6a4e16; border-radius:11px; padding:10px 12px; font-size:14px; margin:0 0 10px; white-space:pre-wrap; }
 .rauthor{ color:var(--muted); font-size:13.5px; font-style:italic; margin-bottom:6px; }
+.linkchips{ display:flex; flex-wrap:wrap; gap:7px; margin:2px 0 10px; }
+.linkchip{ display:inline-flex; align-items:center; gap:5px; border:1.5px solid var(--accent); color:var(--accent);
+  background:var(--accent-soft); border-radius:99px; padding:6px 12px; font-size:13.5px; font-weight:600; cursor:pointer; }
+.linkchip .rm{ border:none; background:none; color:var(--accent); cursor:pointer; font-size:14px; padding:0; opacity:.7; }
 .cathead{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:800; text-transform:uppercase;
   letter-spacing:0.05em; color:var(--muted); margin:16px 0 4px; padding:0 2px; }
 .cathead:first-child{ margin-top:2px; }
@@ -206,6 +224,18 @@ input:focus, textarea:focus, select:focus{ outline:2px solid var(--accent); outl
   padding:10px 18px; border-radius:99px; font-size:14.5px; font-weight:600; opacity:0; transition:all .25s;
   z-index:99; max-width:88%; text-align:center; box-shadow:0 4px 14px rgba(0,0,0,.25); }
 .toast.show{ opacity:1; transform:translate(-50%, 0); }
+.alarmbar{ position:fixed; left:0; right:0; bottom:0; z-index:80; display:flex; flex-direction:column;
+  gap:6px; padding:10px 12px calc(12px + env(safe-area-inset-bottom)); pointer-events:none; }
+.alarmcard{ pointer-events:auto; background:var(--olive); color:#fff; border-radius:14px; padding:10px 12px;
+  display:flex; align-items:center; gap:9px; box-shadow:0 6px 20px rgba(0,0,0,.32); max-width:560px; margin:0 auto;
+  width:100%; animation:abpop .28s; }
+@keyframes abpop{ from{ transform:translateY(18px); opacity:0; } to{ transform:none; opacity:1; } }
+.alarmcard .ab-t{ flex:1; font-size:13.5px; line-height:1.3; }
+.alarmcard .ab-t b{ display:block; font-size:14.5px; margin-bottom:1px; }
+.alarmcard button{ border:none; border-radius:10px; font-weight:700; font-size:13px; cursor:pointer; padding:8px 11px; flex-shrink:0; }
+.alarmcard .ab-go{ background:#fff; color:var(--olive); }
+.alarmcard .ab-x{ background:rgba(255,255,255,.22); color:#fff; }
+.step.ringing{ border-color:var(--olive); border-width:2px; box-shadow:0 0 0 3px var(--olive-soft); }
 @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
 </style>
 </head>
@@ -316,6 +346,15 @@ let courses = lsGet('courses', []);
 function loadPref(k, def){ try{ const v = localStorage.getItem('repas:pref:'+k); return v===null?def:v==='1'; }catch(e){ return def; } }
 function savePref(k, v){ try{ localStorage.setItem('repas:pref:'+k, v?'1':'0'); }catch(e){} }
 let prefs = { vib: loadPref('vib', true), son: loadPref('son', true), veille: loadPref('veille', true) };
+let notifPref = loadPref('notif', false);
+let darkPref = loadPref('dark', false);
+let staples = lsGet('staples', null);
+if(staples===null){ staples = ['Sel','Poivre','Huile','Eau']; lsSet('staples', staples); }
+function applyTheme(){
+  document.documentElement.dataset.theme = darkPref ? 'dark' : '';
+  const m = document.querySelector('meta[name="theme-color"]');
+  if(m) m.setAttribute('content', darkPref ? '#1b1712' : '#c2451f');
+}
 
 /* ============ utilitaires ============ */
 const app = document.getElementById('app');
@@ -385,12 +424,54 @@ function getSession(rid, create){
   return s;
 }
 let alarms = {};
+let rungAlarms = [];
+function renderAlarmBar(){
+  let bar = document.getElementById('alarmbar');
+  if(!rungAlarms.length){ if(bar) bar.remove(); return; }
+  if(!bar){ bar = document.createElement('div'); bar.id = 'alarmbar'; bar.className = 'alarmbar'; document.body.appendChild(bar); }
+  bar.innerHTML = rungAlarms.map((a,i)=>{
+    const s = sessions.find(x=>x.id===a.sid); const r = s && recipes.find(x=>x.id===s.rid);
+    const name = r ? r.name : 'Recette'; const stepTxt = (r && r.steps[a.k]) ? r.steps[a.k].t : '';
+    return `<div class="alarmcard"><div class="ab-t"><b>⏱ Prêt — ${esc(name)}</b>Étape ${a.k+1}${stepTxt?' : '+esc(stepTxt):''}</div>
+      <button class="ab-go" data-go="${i}">Ouvrir</button><button class="ab-x" data-x="${i}">✕</button></div>`;
+  }).join('');
+  bar.querySelectorAll('[data-go]').forEach(b=>{ b.onclick = ()=>{ const a = rungAlarms[+b.dataset.go]; if(!a) return; const s = sessions.find(x=>x.id===a.sid); clearRung(a.sid, a.k); if(s) cookScreen(s.rid); }; });
+  bar.querySelectorAll('[data-x]').forEach(b=>{ b.onclick = ()=>{ const a = rungAlarms[+b.dataset.x]; if(a) clearRung(a.sid, a.k); }; });
+}
+function addRung(sid, k){ if(!rungAlarms.some(a=>a.sid===sid && a.k===k)) rungAlarms.push({ sid, k }); renderAlarmBar(); markRinging(); }
+function clearRung(sid, k){ rungAlarms = rungAlarms.filter(a=>!(a.sid===sid && a.k===k)); renderAlarmBar(); markRinging(); }
+function markRinging(){
+  document.querySelectorAll('#c-steps .step').forEach(card=>{
+    const k = +card.dataset.k;
+    const on = rungAlarms.some(a=>a.k===k && a.sid===(curSessId||''));
+    card.classList.toggle('ringing', on);
+  });
+}
+let curSessId = null;
+function swPost(msg){
+  try{
+    if(navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage(msg);
+    else if(navigator.serviceWorker) navigator.serviceWorker.ready.then(reg=>{ if(reg.active) reg.active.postMessage(msg); }).catch(()=>{});
+  }catch(e){}
+}
+function notify(title, body, tag){
+  if(!notifPref || !('Notification' in window) || Notification.permission!=='granted') return;
+  try{
+    if(navigator.serviceWorker){ navigator.serviceWorker.ready.then(reg=>{ reg.showNotification(title, { body, tag, renotify:true, icon:'icon-192.png', badge:'icon-192.png', vibrate:[200,100,200,100,400] }); }).catch(()=>{}); }
+    else { new Notification(title, { body, tag, icon:'icon-192.png' }); }
+  }catch(e){}
+}
 function armAlarm(sess, k){
   const key = sess.id+':'+k;
   if(alarms[key]) clearTimeout(alarms[key]);
   const end = sess.timers[k]; if(end===undefined) return;
   const ms = end - Date.now(); if(ms<=0) return;
-  alarms[key] = setTimeout(()=>{ delete alarms[key]; beep(4); buzz([200,100,200,100,400]); }, ms);
+  alarms[key] = setTimeout(()=>{
+    delete alarms[key]; beep(4); buzz([200,100,200,100,400]);
+    addRung(sess.id, k);
+    const r = recipes.find(x=>x.id===sess.rid);
+    notify('repas. — '+(r?r.name:'Minuteur'), 'Étape '+(k+1)+((r&&r.steps[k]&&r.steps[k].t)?' : '+r.steps[k].t:'')+' prête !', sess.id+':'+k);
+  }, ms);
 }
 function clearAlarm(sid, k){ const key = sid+':'+k; if(alarms[key]){ clearTimeout(alarms[key]); delete alarms[key]; } }
 function rearmAllAlarms(){ sessions.forEach(s=> Object.keys(s.timers||{}).forEach(k=>armAlarm(s, +k)) ); }
@@ -409,7 +490,12 @@ let stack = [{ screen:'home' }];
 let histOK = false;
 try{ history.replaceState({ i:0 }, ''); histOK = !!(history.state && history.state.i===0); }catch(e){}
 (function(){ const before = sessions.length; sessions = sessions.filter(s=>recipes.some(r=>r.id===s.rid)); if(sessions.length!==before) saveSessions(); })();
-rearmAllAlarms();
+sessions.forEach(s=> Object.keys(s.timers||{}).forEach(k=>{
+  const end = s.timers[k];
+  if(end - Date.now() <= 0){ rungAlarms.push({ sid:s.id, k:+k }); }
+  else { armAlarm(s, +k); if(notifPref){ const r = recipes.find(x=>x.id===s.rid); swPost({ type:'startTimer', id:s.id+':'+k, at:end, title:'repas. — '+(r?r.name:'Minuteur'), body:'Étape '+(+k+1)+((r&&r.steps[k]&&r.steps[k].t)?' : '+r.steps[k].t:'')+' prête !' }); } }
+}));
+renderAlarmBar();
 let fromPop = false;
 let ignorePop = false;
 function pushScreen(st){
@@ -615,9 +701,10 @@ function recipesScreen(query){
         ${open ? `<div class="rbody">
           ${r.photos&&r.photos.length ? `<div class="rphotos">${r.photos.map(src=>`<img src="${src}" data-photo="${esc(src)}">`).join('')}</div>` : ''}
           ${r.author ? `<div class="rauthor">Recette de ${esc(r.author)}</div>` : ''}
-          <div class="note" style="margin-bottom:8px">Pour ${r.serves} personne${r.serves>1?'s':''} · ${r.steps.length} étape${r.steps.length>1?'s':''}</div>
+          <div class="note" style="margin-bottom:8px">Pour ${r.serves} personne${r.serves>1?'s':''} · ${r.steps.length} étape${r.steps.length>1?'s':''}${recipeTime(r)?' · '+fmtMin(recipeTime(r)):''}</div>
           ${r.ings.map(i=>`<div class="ing"><span>${esc(i.n)}</span><span class="q">${fmtQ(i.q)}${i.u?' '+esc(i.u):''}</span></div>`).join('')}
           ${r.notes ? `<div class="rnotes" style="margin-top:10px">📝 ${esc(r.notes)}</div>` : ''}
+          ${(r.links&&r.links.filter(id=>recipes.some(x=>x.id===id)).length) ? `<div style="margin-top:10px"><div class="note" style="margin-bottom:5px">🔗 Recettes liées</div><div class="linkchips">${r.links.filter(id=>recipes.some(x=>x.id===id)).map(id=>{ const lr=recipes.find(x=>x.id===id); return `<span class="linkchip" data-golink="${id}">${esc(lr.name)}</span>`; }).join('')}</div></div>` : ''}
           <div class="ractions">
             <button class="go" data-cook="${r.id}">▶ Cuisiner</button>
             <button data-buy="${r.id}">🛒 + courses</button>
@@ -655,12 +742,18 @@ function recipesScreen(query){
     list.querySelectorAll('[data-photo]').forEach(im=>{ im.onclick = e=>{
       e.stopPropagation(); photoLightbox(im.dataset.photo);
     }; });
+    list.querySelectorAll('[data-golink]').forEach(c=>{ c.onclick = e=>{
+      e.stopPropagation(); const id = c.dataset.golink;
+      filterType='all'; filterFav=false; filterStock=false; openRecipe = id; recipesScreen('');
+    }; });
     list.querySelectorAll('[data-del]').forEach(b=>{ b.onclick = e=>{
       e.stopPropagation();
       const r = recipes.find(x=>x.id===b.dataset.del);
       if(!r) return;
       confirmSheet({ title:'Supprimer cette recette ?', msg:'« '+r.name+' » sera définitivement supprimée.', yes:'Supprimer', no:'Annuler', danger:true }, ()=>{
-        recipes = recipes.filter(x=>x.id!==r.id); saveRecipes();
+        recipes = recipes.filter(x=>x.id!==r.id);
+        recipes.forEach(rr=>{ if(rr.links) rr.links = rr.links.filter(id=>id!==r.id); });
+        saveRecipes();
         const sBefore = sessions.length; sessions = sessions.filter(x=>x.id && recipes.some(rr=>rr.id===x.rid)); if(sessions.length!==sBefore) saveSessions();
         openRecipe = null; renderList(document.getElementById('rq').value);
       });
@@ -698,15 +791,18 @@ function saveRecipes(){
   try{ localStorage.setItem('repas:recipes', JSON.stringify(recipes)); return true; }
   catch(e){ return false; }
 }
+function recipeTime(r){ return (r.steps||[]).reduce((t,s)=> t + (s.m>0 ? s.m : 0), 0); }
+function fmtMin(m){ if(m<60) return '≈ '+m+' min'; const hh=Math.floor(m/60), mm=m%60; return '≈ '+hh+' h'+(mm?' '+mm:''); }
 function stockNames(){
   const all = [];
   Object.keys(STORES).forEach(k=> (stores[k]||[]).forEach(it=>{ const n = norm(it.n); if(n) all.push(n); }));
   return all;
 }
 function missingIngs(r, stock){
+  const st = stock.concat((staples||[]).map(norm));
   const miss = [];
   (r.ings||[]).forEach(i=>{ const ni = norm(i.n); if(!ni) return;
-    if(!stock.some(s=> s.includes(ni) || ni.includes(s))) miss.push(i.n); });
+    if(!st.some(s=> s && (s.includes(ni) || ni.includes(s)))) miss.push(i.n); });
   return miss;
 }
 function todayMidnight(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
@@ -826,6 +922,27 @@ function catSheet(curCat, cb){
   ov.querySelectorAll('[data-c]').forEach(p=>{ p.onclick = ()=>{ cb(p.dataset.c); goBack(); }; });
   ov.querySelector('#cs-close').onclick = ()=>goBack();
 }
+function linkSheet(selfId, existing, cb){
+  const ov = document.createElement('div'); ov.className = 'overlay';
+  const pool = recipes.filter(r=>r.id!==selfId && !(existing||[]).includes(r.id)).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+  ov.innerHTML = `<div class="sheet"><h3>Lier une recette</h3>
+    <div class="searchbar"><input type="search" id="lk-q" placeholder="Chercher une recette…"></div>
+    <div id="lk-list"></div>
+    <button class="ghost" id="lk-close" style="margin-top:10px">Fermer</button></div>`;
+  document.body.appendChild(ov);
+  if(histOK){ try{ history.pushState({ i: stack.length-1, ov:1 }, ''); }catch(e){} }
+  ov.onclick = e=>{ if(e.target===ov) goBack(); };
+  function renderPool(q){
+    const found = pool.filter(r=>matchRecipe(r,q));
+    document.getElementById('lk-list').innerHTML = found.length
+      ? found.map(r=>`<div class="pickitem" data-id="${r.id}"><span class="pill ${r.type}">${esc(typeLabel(r))}</span> ${esc(r.name)}</div>`).join('')
+      : '<div class="empty">Aucune autre recette à lier.</div>';
+    ov.querySelectorAll('.pickitem').forEach(p=>{ p.onclick = ()=>{ cb(p.dataset.id); goBack(); }; });
+  }
+  renderPool('');
+  document.getElementById('lk-q').oninput = e=>renderPool(e.target.value);
+  document.getElementById('lk-close').onclick = ()=>goBack();
+}
 function notesSheet(r){
   const ov = document.createElement('div'); ov.className = 'overlay';
   ov.innerHTML = `<div class="sheet">
@@ -859,10 +976,10 @@ function editScreen(id){
   leaveCook(); closeOverlay();
   pushScreen({ screen:'edit', id:id||null });
   const existing = id ? recipes.find(r=>r.id===id) : null;
-  if(existing){ if(!existing.photos) existing.photos = []; if(existing.author===undefined) existing.author=''; if(existing.notes===undefined) existing.notes=''; migrateType(existing); }
+  if(existing){ if(!existing.photos) existing.photos = []; if(!existing.links) existing.links = []; if(existing.author===undefined) existing.author=''; if(existing.notes===undefined) existing.notes=''; migrateType(existing); }
   const draft = existing
     ? JSON.parse(JSON.stringify(existing))
-    : { id:uid(), name:'', type:'plat', typeNote:'', serves:2, author:'', notes:'', photos:[], ings:[{n:'',q:null,u:''}], steps:[{t:'',m:null}], created:Date.now() };
+    : { id:uid(), name:'', type:'plat', typeNote:'', serves:2, author:'', notes:'', photos:[], links:[], ings:[{n:'',q:null,u:''}], steps:[{t:'',m:null}], created:Date.now() };
   app.innerHTML = '';
   app.appendChild(topbar(existing?'Modifier la recette':'Nouvelle recette'));
   const box = document.createElement('div');
@@ -888,6 +1005,10 @@ function editScreen(id){
     <div class="field"><label>Étapes <span style="text-transform:none;font-weight:500">(minuterie en minutes, facultative)</span></label><div id="e-steps"></div>
       <button class="ghost" id="e-addS" style="margin-top:4px">+ Étape</button></div>
     <div class="field"><label>Notes / commentaires</label><textarea id="e-notes" placeholder="Variantes, astuces, souvenirs…">${esc(draft.notes||'')}</textarea></div>
+    <div class="field"><label>Recettes liées <span style="text-transform:none;font-weight:500">(ex : une tarte → sa pâte)</span></label>
+      <div id="e-links" class="linkchips"></div>
+      <button class="ghost" id="e-addL">🔗 Lier une recette</button>
+    </div>
     <button class="primary" id="e-save">Enregistrer la recette</button>`;
   app.appendChild(box);
 
@@ -903,7 +1024,7 @@ function editScreen(id){
       rd.onload = ()=>{
         let rec = null;
         try{ rec = parseRecipeFile(JSON.parse(rd.result)); }catch(e){}
-        if(!rec || !rec.name){ alert('Ce fichier n\u2019est pas une recette repas. valide.'); ev.target.value=''; return; }
+        if(!rec || !rec.name){ toast('Fichier de recette invalide'); ev.target.value=''; return; }
         draft.name = rec.name; draft.type = rec.type; draft.serves = rec.serves;
         draft.ings = rec.ings.length ? rec.ings : [{n:'',q:null,u:''}];
         draft.steps = rec.steps.length ? rec.steps : [{t:'',m:null}];
@@ -973,7 +1094,20 @@ function editScreen(id){
     b.innerHTML = draft.photos.map((src,k)=>`<div class="photo"><img src="${src}"><button class="prm" data-pk="${k}">✕</button></div>`).join('');
     b.querySelectorAll('.prm').forEach(x=>{ x.onclick = ()=>{ draft.photos.splice(+x.dataset.pk,1); renderPhotos(); }; });
   }
-  renderIngs(); renderSteps(); renderPhotos();
+  function renderLinks(){
+    if(!draft.links) draft.links = [];
+    const b = document.getElementById('e-links');
+    const valid = draft.links.filter(id=>recipes.some(r=>r.id===id));
+    if(valid.length!==draft.links.length) draft.links = valid;
+    b.innerHTML = draft.links.length
+      ? draft.links.map(id=>{ const lr = recipes.find(r=>r.id===id); return `<span class="linkchip" data-lk="${id}">${esc(lr?lr.name:'?')} <button class="rm" data-rml="${id}">✕</button></span>`; }).join('')
+      : '<span class="note">Aucune pour l\u2019instant.</span>';
+    b.querySelectorAll('[data-rml]').forEach(x=>{ x.onclick = ev=>{ ev.stopPropagation(); draft.links = draft.links.filter(i=>i!==x.dataset.rml); renderLinks(); }; });
+  }
+  renderIngs(); renderSteps(); renderPhotos(); renderLinks();
+  document.getElementById('e-addL').onclick = ()=>{
+    linkSheet(draft.id, draft.links, id=>{ if(!draft.links.includes(id)) draft.links.push(id); renderLinks(); });
+  };
   document.getElementById('e-author').oninput = e=>{ draft.author = e.target.value; };
   document.getElementById('e-notes').oninput = e=>{ draft.notes = e.target.value; };
   document.getElementById('e-addP').onclick = ()=>document.getElementById('e-pfile').click();
@@ -991,7 +1125,7 @@ function editScreen(id){
 
   document.getElementById('e-save').onclick = ()=>{
     draft.name = draft.name.trim();
-    if(!draft.name){ alert('Donne un nom à ta recette 🙂'); return; }
+    if(!draft.name){ toast('Donne un nom à ta recette 🙂'); return; }
     draft.author = (draft.author||'').trim();
     draft.notes = (draft.notes||'').trim();
     draft.typeNote = draft.type==='autre' ? (draft.typeNote||'').trim() : '';
@@ -1029,6 +1163,7 @@ function cookScreen(rid){
         <button id="c-sp">+</button>
       </div>
       <div id="c-ings" style="margin-top:8px"></div>
+      ${(r.links&&r.links.filter(id=>recipes.some(x=>x.id===id)).length) ? `<div style="margin-top:12px;border-top:1.5px dashed var(--line);padding-top:10px"><div class="note" style="margin-bottom:6px">🔗 Recettes liées</div><div class="linkchips">${r.links.filter(id=>recipes.some(x=>x.id===id)).map(id=>{ const lr=recipes.find(x=>x.id===id); return `<span class="linkchip" data-cooklink="${id}">${esc(lr.name)}</span>`; }).join('')}</div></div>` : ''}
     </div>
     <h2 class="sec">Étapes</h2>
     <div class="progress"><i id="c-prog" style="width:0%"></i></div>
@@ -1047,6 +1182,7 @@ function cookScreen(rid){
       return `<div class="ing"><span>${esc(i.n)}</span><span class="q">${q===null?'':fmtQ(q)}${i.u?' '+esc(i.u):''}</span></div>`;
     }).join('');
   }
+  box.querySelectorAll('[data-cooklink]').forEach(c=>{ c.onclick = ()=>cookScreen(c.dataset.cooklink); });
   document.getElementById('c-sm').onclick = ()=>{ if(sess.serves>1){ sess.serves--; saveSessions(); renderIngs(); } };
   document.getElementById('c-sp').onclick = ()=>{ if(sess.serves<20){ sess.serves++; saveSessions(); renderIngs(); } };
   renderIngs();
@@ -1077,8 +1213,9 @@ function cookScreen(rid){
     if(sess.timers[k]===undefined){
       sess.timers[k] = Date.now() + r.steps[k].m*60000; saveSessions();
       armAlarm(sess, k); startTick(k);
+      if(notifPref) swPost({ type:'startTimer', id:sess.id+':'+k, at:sess.timers[k], title:'repas. — '+r.name, body:'Étape '+(k+1)+(r.steps[k].t?' : '+r.steps[k].t:'')+' prête !' });
     } else {
-      delete sess.timers[k]; saveSessions(); stopTick(k); clearAlarm(sess.id, k);
+      delete sess.timers[k]; saveSessions(); stopTick(k); clearAlarm(sess.id, k); clearRung(sess.id, k); swPost({ type:'cancelTimer', id:sess.id+':'+k });
       btn.classList.remove('run','over'); btn.textContent = '⏱ '+r.steps[k].m+' min';
     }
   }
@@ -1096,7 +1233,7 @@ function cookScreen(rid){
     }).join('');
     b.querySelectorAll('.chk').forEach(c=>{ c.onclick = ()=>{
       const k = +c.dataset.k; sess.done[k] = !sess.done[k]; buzz(20);
-      if(sess.done[k] && sess.timers[k]!==undefined){ delete sess.timers[k]; stopTick(k); clearAlarm(sess.id, k); }
+      if(sess.done[k] && sess.timers[k]!==undefined){ delete sess.timers[k]; stopTick(k); clearAlarm(sess.id, k); clearRung(sess.id, k); swPost({ type:'cancelTimer', id:sess.id+':'+k }); }
       saveSessions();
       const card = b.querySelector('.step[data-k="'+k+'"]'); card.classList.toggle('done', sess.done[k]); c.textContent = sess.done[k]?'✓':'';
       const tb = btnFor(k); if(tb && sess.timers[k]===undefined){ tb.classList.remove('run','over'); tb.textContent = '⏱ '+r.steps[k].m+' min'; }
@@ -1110,9 +1247,10 @@ function cookScreen(rid){
     document.getElementById('c-prog').style.width = (r.steps.length ? n/r.steps.length*100 : 0)+'%';
   }
   renderSteps(); updateProg();
+  curSessId = sess.id; markRinging();
   document.getElementById('c-pause').onclick = ()=>goBack();
   document.getElementById('c-finish').onclick = ()=>{
-    Object.keys(sess.timers||{}).forEach(k=>clearAlarm(sess.id, +k));
+    Object.keys(sess.timers||{}).forEach(k=>{ clearAlarm(sess.id, +k); clearRung(sess.id, +k); swPost({ type:'cancelTimer', id:sess.id+':'+k }); });
     sessions = sessions.filter(x=>x.id!==sess.id); saveSessions();
     buzz([60,40,60]); goBack();
   };
@@ -1505,6 +1643,10 @@ function settingsScreen(){
   box.innerHTML = `
     <div class="card">
       <div class="optrow">
+        <div class="ot"><b>Mode sombre</b><span>Thème foncé, reposant le soir</span></div>
+        <button class="switch ${darkPref?'on':''}" data-dark="1"></button>
+      </div>
+      <div class="optrow">
         <div class="ot"><b>Vibration</b><span>Petites vibrations sur les actions et fin de minuterie</span></div>
         <button class="switch ${prefs.vib?'on':''}" data-p="vib"></button>
       </div>
@@ -1519,6 +1661,10 @@ function settingsScreen(){
       <div class="optrow">
         <div class="ot"><b>Boutons de rangement directs</b><span>Dans les courses, affiche une icône par liste active (au lieu du 🧺) pour ranger en un seul tap</span></div>
         <button class="switch ${directStore?'on':''}" data-p2="directStore"></button>
+      </div>
+      <div class="optrow">
+        <div class="ot"><b>Notifications de minuteur</b><span>Tente d'afficher une notification système quand un minuteur se termine, même appli quittée (selon le téléphone)</span></div>
+        <button class="switch ${notifPref?'on':''}" data-notif="1"></button>
       </div>
     </div>
     <h2 class="sec">Mes listes de stockage</h2>
@@ -1538,6 +1684,12 @@ function settingsScreen(){
         <button class="switch ${expiryStores[k]?'on':''}" data-xs="${k}"></button>
       </div>`).join('')}
       <p class="note" style="margin-top:10px">Activée pour une liste : un champ date apparaît, et les articles périmant bientôt remontent en tête avec une couleur. Désactivée : la liste reste neutre, comme avant.</p>
+    </div>
+    <h2 class="sec">Mes indispensables</h2>
+    <div class="card">
+      <p class="note" style="margin:0 0 10px">Ces ingrédients sont considérés « toujours en stock » : ils ne sont jamais comptés comme manquants dans le filtre 🍳 des recettes.</p>
+      <div class="addrow"><input type="text" id="st-add" placeholder="Ex : Sel, Huile, Beurre…"><button id="st-ok">+</button></div>
+      <div id="st-list" style="display:flex;flex-wrap:wrap;gap:7px"></div>
     </div>
     <h2 class="sec">Sauvegarde</h2>
     <div class="card">
@@ -1559,6 +1711,39 @@ function settingsScreen(){
     directStore = !directStore; savePref('directStore', directStore);
     s.classList.toggle('on', directStore); buzz(20);
   }; });
+  document.querySelectorAll('.switch[data-dark]').forEach(s=>{ s.onclick = ()=>{
+    darkPref = !darkPref; savePref('dark', darkPref); applyTheme();
+    s.classList.toggle('on', darkPref); buzz(20);
+  }; });
+  (function(){
+    const listEl = document.getElementById('st-list');
+    const inp = document.getElementById('st-add');
+    function renderStaples(){
+      listEl.innerHTML = staples.length
+        ? staples.map((s,i)=>`<span class="chip on" data-stk="${i}" style="cursor:default">${esc(s)} <b style="margin-left:4px;opacity:.8">✕</b></span>`).join('')
+        : '<span class="note">Aucun pour l\u2019instant.</span>';
+      listEl.querySelectorAll('[data-stk]').forEach(c=>{ c.onclick = ()=>{ staples.splice(+c.dataset.stk,1); lsSet('staples', staples); renderStaples(); }; });
+    }
+    function addStaple(){
+      const v = inp.value.trim(); if(!v) return;
+      if(staples.some(s=>norm(s)===norm(v))){ toast('Déjà dans tes indispensables'); inp.value=''; return; }
+      staples.push(v); lsSet('staples', staples); inp.value=''; inp.focus(); renderStaples();
+    }
+    document.getElementById('st-ok').onclick = addStaple;
+    inp.onkeydown = e=>{ if(e.key==='Enter') addStaple(); };
+    renderStaples();
+  })();
+  document.querySelectorAll('.switch[data-notif]').forEach(s=>{ s.onclick = ()=>{
+    if(!notifPref){
+      if(!('Notification' in window)){ toast('Notifications non disponibles sur ce navigateur'); return; }
+      Notification.requestPermission().then(p=>{
+        if(p==='granted'){ notifPref = true; savePref('notif', true); s.classList.add('on'); buzz(20); notify('repas.', 'Notifications activées ✓', 'test'); }
+        else { toast('Notifications refusées (à réactiver dans les réglages du téléphone)'); }
+      });
+    } else {
+      notifPref = false; savePref('notif', false); s.classList.remove('on'); buzz(20);
+    }
+  }; });
   document.querySelectorAll('.switch[data-p]').forEach(s=>{ s.onclick = ()=>{
     const p = s.dataset.p; prefs[p] = !prefs[p]; savePref(p, prefs[p]);
     s.classList.toggle('on', prefs[p]);
@@ -1567,7 +1752,7 @@ function settingsScreen(){
   }; });
   document.getElementById('o-export').onclick = ()=>{
     const data = { app:'repas', version:2, exported:new Date().toISOString(),
-      recipes, plan, stores, active, expiryStores, courses };
+      recipes, plan, stores, active, expiryStores, staples, courses };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1595,6 +1780,7 @@ function settingsScreen(){
           Object.keys(STORES).forEach(k=>{ if(!Array.isArray(stores[k])) stores[k] = []; });
           active = Object.assign({ frigo:true, congel:true, placard:false, autre:false }, data.active||{});
           if(data.expiryStores && typeof data.expiryStores==='object'){ expiryStores = Object.assign({ frigo:false, congel:false, placard:false, autre:false }, data.expiryStores); lsSet('expiryStores', expiryStores); }
+          if(Array.isArray(data.staples)){ staples = data.staples; lsSet('staples', staples); }
           courses = Array.isArray(data.courses)?data.courses:[];
           sessions = []; saveSessions();
           lsSet('recipes', recipes); lsSet('plan', plan); lsSet('stores', stores);
@@ -1612,6 +1798,7 @@ function settingsScreen(){
 if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
+applyTheme();
 fromPop = true;
 home();
 </script>
