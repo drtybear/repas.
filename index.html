@@ -370,6 +370,31 @@ let inCook = false;
 function clearTimers(){ Object.values(cookTimers).forEach(t=>clearInterval(t.int)); cookTimers = {}; }
 function leaveCook(){ clearTimers(); unlockScreen(); inCook = false; }
 
+/* ===== préparations en cours (sessions persistantes) ===== */
+let sessions = lsGet('sessions', []);
+if(!Array.isArray(sessions)) sessions = [];
+function saveSessions(){ lsSet('sessions', sessions); }
+function getSession(rid, create){
+  let s = sessions.find(x=>x.rid===rid);
+  if(!s && create){
+    const r = recipes.find(x=>x.id===rid);
+    if(!r) return null;
+    s = { id:uid(), rid:rid, serves:r.serves, done:r.steps.map(()=>false), timers:{}, started:Date.now() };
+    sessions.push(s); saveSessions();
+  }
+  return s;
+}
+let alarms = {};
+function armAlarm(sess, k){
+  const key = sess.id+':'+k;
+  if(alarms[key]) clearTimeout(alarms[key]);
+  const end = sess.timers[k]; if(end===undefined) return;
+  const ms = end - Date.now(); if(ms<=0) return;
+  alarms[key] = setTimeout(()=>{ delete alarms[key]; beep(4); buzz([200,100,200,100,400]); }, ms);
+}
+function clearAlarm(sid, k){ const key = sid+':'+k; if(alarms[key]){ clearTimeout(alarms[key]); delete alarms[key]; } }
+function rearmAllAlarms(){ sessions.forEach(s=> Object.keys(s.timers||{}).forEach(k=>armAlarm(s, +k)) ); }
+
 function topbar(title){
   const tb = document.createElement('div');
   tb.className = 'topbar';
@@ -383,6 +408,8 @@ function closeOverlay(){ const o = document.querySelector('.overlay'); if(o) o.r
 let stack = [{ screen:'home' }];
 let histOK = false;
 try{ history.replaceState({ i:0 }, ''); histOK = !!(history.state && history.state.i===0); }catch(e){}
+(function(){ const before = sessions.length; sessions = sessions.filter(s=>recipes.some(r=>r.id===s.rid)); if(sessions.length!==before) saveSessions(); })();
+rearmAllAlarms();
 let fromPop = false;
 let ignorePop = false;
 function pushScreen(st){
@@ -397,6 +424,7 @@ function renderState(st){
   else if(st.screen==='recipes') recipesScreen(st.q||'');
   else if(st.screen==='edit') editScreen(st.id||null);
   else if(st.screen==='cook') cookScreen(st.id);
+  else if(st.screen==='sessions') sessionsScreen();
   else if(st.screen==='list') listScreen(st.kind||'frigo');
   else if(st.screen==='courses') coursesScreen();
   else if(st.screen==='settings') settingsScreen();
@@ -455,6 +483,11 @@ function home(){
   const h = document.createElement('div');
   h.innerHTML = `
     <div class="topbar"><div class="brand">repas<b>.</b></div></div>
+    ${sessions.length ? `<div class="card navcard" id="goCook">
+      <div class="ico" style="background:var(--accent-soft)">🍳</div>
+      <div><div class="t">Préparations en cours</div><div class="s">${sessions.length} recette${sessions.length>1?'s':''} lancée${sessions.length>1?'s':''}</div></div>
+      <div class="chev">›</div>
+    </div>` : ''}
     <div class="card navcard" id="goCal">
       <div class="ico">📅</div>
       <div><div class="t">Calendrier de la semaine</div>
@@ -486,6 +519,7 @@ function home(){
       <div class="chev">›</div>
     </div>`;
   app.appendChild(h);
+  if(document.getElementById('goCook')) document.getElementById('goCook').onclick = sessionsScreen;
   document.getElementById('goCal').onclick = ()=>calScreen(0);
   document.getElementById('goRec').onclick = ()=>recipesScreen('');
   document.querySelectorAll('[data-store]').forEach(c=>{ c.onclick = ()=>listScreen(c.dataset.store); });
@@ -496,8 +530,15 @@ function home(){
 /* ============ recettes ============ */
 let openRecipe = null;
 let filterFav = false, filterStock = false, filterType = 'all';
-let useExpiry = loadPref('expiry', false);
+let expiryStores = lsGet('expiryStores', null);
+if(!expiryStores){
+  const oldGlobal = loadPref('expiry', false);
+  expiryStores = oldGlobal ? { frigo:true, congel:true, placard:false, autre:false } : { frigo:false, congel:false, placard:false, autre:false };
+  lsSet('expiryStores', expiryStores);
+}
+Object.keys(STORES).forEach(k=>{ if(typeof expiryStores[k]!=='boolean') expiryStores[k]=false; });
 let coursesGrouped = loadPref('coursesGrouped', true);
+let directStore = loadPref('directStore', false);
 function norm(s){ return String(s==null?'':s).toLowerCase().replace(/œ/g,'oe').replace(/æ/g,'ae').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 function matchRecipe(r, q){
   if(!q) return true;
@@ -617,10 +658,12 @@ function recipesScreen(query){
     list.querySelectorAll('[data-del]').forEach(b=>{ b.onclick = e=>{
       e.stopPropagation();
       const r = recipes.find(x=>x.id===b.dataset.del);
-      if(r && confirm('Supprimer « '+r.name+' » ?')){
-        recipes = recipes.filter(x=>x.id!==r.id); lsSet('recipes', recipes);
+      if(!r) return;
+      confirmSheet({ title:'Supprimer cette recette ?', msg:'« '+r.name+' » sera définitivement supprimée.', yes:'Supprimer', no:'Annuler', danger:true }, ()=>{
+        recipes = recipes.filter(x=>x.id!==r.id); saveRecipes();
+        const sBefore = sessions.length; sessions = sessions.filter(x=>x.id && recipes.some(rr=>rr.id===x.rid)); if(sessions.length!==sBefore) saveSessions();
         openRecipe = null; renderList(document.getElementById('rq').value);
-      }
+      });
     }; });
   }
   renderList(query);
@@ -753,6 +796,25 @@ function parseRecipeFile(obj){
     created: Date.now()
   };
 }
+function confirmSheet(opts, onYes){
+  const ov = document.createElement('div'); ov.className = 'overlay';
+  ov.innerHTML = `<div class="sheet">
+    <h3>${esc(opts.title||'Confirmer ?')}</h3>
+    ${opts.msg ? `<p class="note" style="margin:-4px 0 14px">${esc(opts.msg)}</p>` : ''}
+    <button class="primary" id="cf-yes" style="${opts.danger?'background:var(--danger);':''}">${esc(opts.yes||'Confirmer')}</button>
+    <button class="ghost" id="cf-no" style="margin-top:8px">${esc(opts.no||'Annuler')}</button>
+  </div>`;
+  document.body.appendChild(ov);
+  let pushed = false;
+  if(histOK){ try{ history.pushState({ i: stack.length-1, ov:1 }, ''); pushed = true; }catch(e){} }
+  function closeQuiet(){
+    if(pushed && histOK){ ignorePop = true; try{ history.back(); }catch(e){} setTimeout(()=>{ ignorePop = false; }, 400); }
+    ov.remove();
+  }
+  ov.onclick = e=>{ if(e.target===ov) closeQuiet(); };
+  ov.querySelector('#cf-no').onclick = ()=>closeQuiet();
+  ov.querySelector('#cf-yes').onclick = ()=>{ closeQuiet(); buzz(20); onYes(); };
+}
 function catSheet(curCat, cb){
   const ov = document.createElement('div'); ov.className = 'overlay';
   ov.innerHTML = `<div class="sheet"><h3>Ranger dans quel rayon ?</h3>
@@ -810,7 +872,7 @@ function editScreen(id){
       <div class="seg" id="e-type">${Object.keys(TYPES).map(t=>`<button data-t="${t}" class="${draft.type===t?'on':''}">${TYPES[t]}</button>`).join('')}</div>
       <input type="text" id="e-typenote" placeholder="Préciser (ex : Cantine, Resto, Brunch…)" value="${esc(draft.typeNote||'')}" style="margin-top:8px; display:${draft.type==='autre'?'block':'none'}">
     </div>
-    <div class="field"><label>Auteur</label><input type="text" id="e-author" placeholder="Qui a créé / transmis cette recette ?" value="${esc(draft.author||'')}"></div>
+    <div class="field" id="e-authfield" style="display:${(existing&&existing.author)?'block':'none'}"><label>Auteur</label><input type="text" id="e-author" placeholder="Qui t\u2019a transmis cette recette ?" value="${esc(draft.author||'')}"></div>
     <div class="field"><label>Nombre de personnes</label>
       <div class="serves" style="justify-content:flex-start">
         <button id="e-sm">−</button><div class="n" style="min-width:60px" id="e-sn">${draft.serves}</div><button id="e-sp">+</button>
@@ -848,6 +910,7 @@ function editScreen(id){
         draft.author = rec.author || ''; draft.notes = rec.notes || ''; draft.photos = [];
         draft.typeNote = rec.typeNote || '';
         document.getElementById('e-name').value = draft.name;
+        document.getElementById('e-authfield').style.display = 'block';
         document.getElementById('e-author').value = draft.author;
         document.getElementById('e-notes').value = draft.notes;
         { const tn = document.getElementById('e-typenote'); tn.value = draft.typeNote; tn.style.display = draft.type==='autre'?'block':'none'; }
@@ -946,14 +1009,15 @@ function editScreen(id){
 }
 
 /* ============ mode cuisine ============ */
-function cookScreen(id){
-  const r = recipes.find(x=>x.id===id);
+function cookScreen(rid){
+  const r = recipes.find(x=>x.id===rid);
   if(!r){ home(); return; }
+  const sess = getSession(rid, true);
+  if(!sess){ home(); return; }
+  if(sess.done.length !== r.steps.length){ sess.done = r.steps.map((_,i)=>!!sess.done[i]); saveSessions(); }
   leaveCook(); closeOverlay();
-  pushScreen({ screen:'cook', id:id });
+  pushScreen({ screen:'cook', id:rid });
   inCook = true; lockScreen();
-  let serves = r.serves;
-  const done = r.steps.map(()=>false);
   app.innerHTML = '';
   app.appendChild(topbar(r.name));
   const box = document.createElement('div');
@@ -969,72 +1033,136 @@ function cookScreen(id){
     <h2 class="sec">Étapes</h2>
     <div class="progress"><i id="c-prog" style="width:0%"></i></div>
     <div id="c-steps"></div>
-    <button class="primary" id="c-finish" style="margin-top:8px">✓ Terminer</button>`;
+    <div class="ractions" style="margin-top:8px">
+      <button id="c-pause">← Laisser mijoter</button>
+      <button class="go" id="c-finish">✓ Terminer</button>
+    </div>
+    <p class="note" style="margin-top:10px">« Laisser mijoter » garde la recette dans « En cours » (étapes et minuteurs continus). « Terminer » la retire.</p>`;
   app.appendChild(box);
 
   function renderIngs(){
-    document.getElementById('c-sn').textContent = serves + ' pers.';
+    document.getElementById('c-sn').textContent = sess.serves + ' pers.';
     document.getElementById('c-ings').innerHTML = r.ings.map(i=>{
-      const q = (i.q===null||i.q===undefined) ? null : i.q * serves / r.serves;
+      const q = (i.q===null||i.q===undefined) ? null : i.q * sess.serves / r.serves;
       return `<div class="ing"><span>${esc(i.n)}</span><span class="q">${q===null?'':fmtQ(q)}${i.u?' '+esc(i.u):''}</span></div>`;
     }).join('');
   }
-  document.getElementById('c-sm').onclick = ()=>{ if(serves>1){ serves--; renderIngs(); } };
-  document.getElementById('c-sp').onclick = ()=>{ if(serves<20){ serves++; renderIngs(); } };
+  document.getElementById('c-sm').onclick = ()=>{ if(sess.serves>1){ sess.serves--; saveSessions(); renderIngs(); } };
+  document.getElementById('c-sp').onclick = ()=>{ if(sess.serves<20){ sess.serves++; saveSessions(); renderIngs(); } };
   renderIngs();
 
-  function fmtT(sec){
-    sec = Math.max(0, Math.round(sec));
-    const m = Math.floor(sec/60), s = sec%60;
-    return m + ':' + (s<10?'0':'') + s;
+  function fmtT(sec){ sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec/60), s = sec%60; return m+':'+(s<10?'0':'')+s; }
+  function timerLabel(k){
+    const end = sess.timers[k];
+    if(end===undefined) return { cls:'', txt:'⏱ '+r.steps[k].m+' min' };
+    const left = (end - Date.now())/1000;
+    if(left<=0) return { cls:'over', txt:'✓ C\u2019est prêt !' };
+    return { cls:'run', txt:'⏹ '+fmtT(left) };
+  }
+  function btnFor(k){ return document.querySelector('#c-steps [data-t="'+k+'"]'); }
+  function startTick(k){
+    if(cookTimers[k]) return;
+    const tick = ()=>{
+      const btn = btnFor(k); if(!btn){ stopTick(k); return; }
+      const end = sess.timers[k];
+      if(end===undefined){ stopTick(k); return; }
+      const left = (end - Date.now())/1000;
+      if(left<=0){ btn.classList.remove('run'); btn.classList.add('over'); btn.textContent = '✓ C\u2019est prêt !'; stopTick(k); return; }
+      btn.classList.add('run'); btn.classList.remove('over'); btn.textContent = '⏹ '+fmtT(left);
+    };
+    cookTimers[k] = { int: setInterval(tick, 250) }; tick();
+  }
+  function stopTick(k){ if(cookTimers[k]){ clearInterval(cookTimers[k].int); delete cookTimers[k]; } }
+  function onTimer(k, btn){
+    if(sess.timers[k]===undefined){
+      sess.timers[k] = Date.now() + r.steps[k].m*60000; saveSessions();
+      armAlarm(sess, k); startTick(k);
+    } else {
+      delete sess.timers[k]; saveSessions(); stopTick(k); clearAlarm(sess.id, k);
+      btn.classList.remove('run','over'); btn.textContent = '⏱ '+r.steps[k].m+' min';
+    }
   }
   function renderSteps(){
     const b = document.getElementById('c-steps');
-    b.innerHTML = r.steps.map((s,k)=>`
-      <div class="card step ${done[k]?'done':''}" data-k="${k}">
-        <button class="chk" data-k="${k}">${done[k]?'✓':''}</button>
+    b.innerHTML = r.steps.map((s,k)=>{
+      const tl = s.m ? timerLabel(k) : null;
+      return `<div class="card step ${sess.done[k]?'done':''}" data-k="${k}">
+        <button class="chk" data-k="${k}">${sess.done[k]?'✓':''}</button>
         <div style="flex:1">
           <div class="txt">${esc(s.t)}</div>
-          ${s.m ? `<button class="tbtn" data-t="${k}">⏱ ${s.m} min</button>` : ''}
+          ${s.m ? `<button class="tbtn ${tl.cls}" data-t="${k}">${tl.txt}</button>` : ''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     b.querySelectorAll('.chk').forEach(c=>{ c.onclick = ()=>{
-      const k = +c.dataset.k; done[k] = !done[k]; buzz(20);
-      if(done[k] && cookTimers[k]){ clearInterval(cookTimers[k].int); delete cookTimers[k]; }
-      const card = b.querySelector('.step[data-k="'+k+'"]');
-      card.classList.toggle('done', done[k]); c.textContent = done[k]?'✓':'';
+      const k = +c.dataset.k; sess.done[k] = !sess.done[k]; buzz(20);
+      if(sess.done[k] && sess.timers[k]!==undefined){ delete sess.timers[k]; stopTick(k); clearAlarm(sess.id, k); }
+      saveSessions();
+      const card = b.querySelector('.step[data-k="'+k+'"]'); card.classList.toggle('done', sess.done[k]); c.textContent = sess.done[k]?'✓':'';
+      const tb = btnFor(k); if(tb && sess.timers[k]===undefined){ tb.classList.remove('run','over'); tb.textContent = '⏱ '+r.steps[k].m+' min'; }
       updateProg();
     }; });
-    b.querySelectorAll('[data-t]').forEach(tb=>{ tb.onclick = ()=>toggleTimer(+tb.dataset.t, tb); });
+    b.querySelectorAll('[data-t]').forEach(tb=>{ tb.onclick = ()=>onTimer(+tb.dataset.t, tb); });
+    r.steps.forEach((s,k)=>{ if(s.m && sess.timers[k]!==undefined && (sess.timers[k]-Date.now())>0) startTick(k); });
   }
   function updateProg(){
-    const n = done.filter(Boolean).length;
-    document.getElementById('c-prog').style.width = (r.steps.length ? n/r.steps.length*100 : 0) + '%';
-  }
-  function toggleTimer(k, btn){
-    if(cookTimers[k]){
-      clearInterval(cookTimers[k].int); delete cookTimers[k];
-      btn.classList.remove('run','over'); btn.textContent = '⏱ ' + r.steps[k].m + ' min';
-      return;
-    }
-    const end = Date.now() + r.steps[k].m*60000;
-    btn.classList.add('run'); btn.classList.remove('over');
-    const tick = ()=>{
-      const left = (end - Date.now())/1000;
-      if(left <= 0){
-        clearInterval(cookTimers[k].int); delete cookTimers[k];
-        btn.classList.remove('run'); btn.classList.add('over');
-        btn.textContent = '✓ C\u2019est prêt !';
-        beep(4); buzz([200,100,200,100,400]);
-        return;
-      }
-      btn.textContent = '⏹ ' + fmtT(left);
-    };
-    cookTimers[k] = { int: setInterval(tick, 250) };
-    tick();
+    const n = sess.done.filter(Boolean).length;
+    document.getElementById('c-prog').style.width = (r.steps.length ? n/r.steps.length*100 : 0)+'%';
   }
   renderSteps(); updateProg();
-  document.getElementById('c-finish').onclick = ()=>{ buzz([60,40,60]); goBack(); };
+  document.getElementById('c-pause').onclick = ()=>goBack();
+  document.getElementById('c-finish').onclick = ()=>{
+    Object.keys(sess.timers||{}).forEach(k=>clearAlarm(sess.id, +k));
+    sessions = sessions.filter(x=>x.id!==sess.id); saveSessions();
+    buzz([60,40,60]); goBack();
+  };
+}
+
+function sessionsScreen(){
+  leaveCook(); closeOverlay();
+  pushScreen({ screen:'sessions' });
+  app.innerHTML = '';
+  app.appendChild(topbar('Préparations en cours'));
+  const box = document.createElement('div');
+  app.appendChild(box);
+  function render(){
+    if(!sessions.length){
+      box.innerHTML = '<div class="card"><div class="empty">Aucune préparation en cours.<br>Lance une recette avec ▶ Cuisiner !</div></div>';
+      return;
+    }
+    box.innerHTML = sessions.map(s=>{
+      const r = recipes.find(x=>x.id===s.rid);
+      const name = r ? r.name : '(recette supprimée)';
+      const total = r ? r.steps.length : s.done.length;
+      const dn = s.done.filter(Boolean).length;
+      const running = Object.keys(s.timers||{}).filter(k=>(s.timers[k]-Date.now())>0).length;
+      const rang = Object.keys(s.timers||{}).filter(k=>(s.timers[k]-Date.now())<=0).length;
+      let tinfo = '';
+      if(running) tinfo = ' · ⏱ '+running+' minuteur'+(running>1?'s':'')+' en cours';
+      else if(rang) tinfo = ' · ✓ minuteur prêt';
+      return `<div class="card rcard" data-open="${s.rid}">
+        <div class="rhead"><span class="name">${esc(name)}</span><span class="pill plat">${dn}/${total}</span></div>
+        <div class="note" style="margin-top:6px">${dn} étape${dn>1?'s':''} sur ${total} faite${dn>1?'s':''}${tinfo}</div>
+        <div class="progress" style="margin:10px 0 4px"><i style="width:${total?dn/total*100:0}%"></i></div>
+        <div class="ractions">
+          <button class="go" data-resume="${s.rid}">▶ Reprendre</button>
+          <button class="warn" data-stop="${s.id}">✕ Arrêter</button>
+        </div>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('[data-resume]').forEach(b=>{ b.onclick = e=>{ e.stopPropagation(); cookScreen(b.dataset.resume); }; });
+    box.querySelectorAll('.rcard').forEach(c=>{ c.querySelector('.rhead').onclick = ()=>cookScreen(c.dataset.open); });
+    box.querySelectorAll('[data-stop]').forEach(b=>{ b.onclick = e=>{ e.stopPropagation();
+      const s = sessions.find(x=>x.id===b.dataset.stop);
+      if(!s) return;
+      const r = recipes.find(x=>x.id===s.rid);
+      confirmSheet({ title:'Arrêter cette préparation ?', msg:(r?'« '+r.name+' » ':'')+'sera retirée des préparations en cours. La recette elle-même n\u2019est pas supprimée.', yes:'Arrêter', no:'Continuer', danger:true }, ()=>{
+        Object.keys(s.timers||{}).forEach(k=>clearAlarm(s.id, +k));
+        sessions = sessions.filter(x=>x.id!==s.id); saveSessions(); render();
+      });
+    }; });
+  }
+  render();
 }
 
 /* ============ calendrier ============ */
@@ -1158,6 +1286,7 @@ function pickMeal(dateKey, slotKey, offset){
 function listScreen(kind){
   leaveCook(); closeOverlay();
   if(!STORES[kind]) kind = 'frigo';
+  const useExpiry = !!expiryStores[kind];
   pushScreen({ screen:'list', kind:kind });
   app.innerHTML = '';
   app.appendChild(topbar(STORES[kind].ico+' '+STORES[kind].lbl));
@@ -1284,7 +1413,9 @@ function coursesScreen(){
     return `<div class="item ${c.done?'done':''}">
         <button class="chk" data-k="${k}" style="width:26px;height:26px;border-radius:9px">${c.done?'✓':''}</button>
         <span class="nm tap" data-cat="${k}">${esc(c.n)}</span>
-        <button class="iconbtn" data-put="${k}" title="Acheté → ranger dans…">🧺</button>
+        ${directStore
+          ? Object.keys(STORES).filter(s=>active[s]).map(s=>`<button class="iconbtn" data-file="${k}" data-store="${s}" title="Acheté → ${STORES[s].lbl}">${STORES[s].ico}</button>`).join('')
+          : `<button class="iconbtn" data-put="${k}" title="Acheté → ranger dans…">🧺</button>`}
         <button class="iconbtn del" data-rm="${k}">✕</button>
       </div>`;
   }
@@ -1327,6 +1458,14 @@ function coursesScreen(){
         courses.splice(k,1); lsSet('courses', courses);
         buzz(25);
       });
+    }; });
+    document.querySelectorAll('#c-list [data-file]').forEach(b=>{ b.onclick = ()=>{
+      const k = +b.dataset.file; const tgt = b.dataset.store; const it = courses[k];
+      if(!it || !stores[tgt]) return;
+      if(!stores[tgt].some(x=>x.n.toLowerCase()===it.n.toLowerCase())) stores[tgt].push({ n:it.n, q:'' });
+      lsSet('stores', stores);
+      courses.splice(k,1); lsSet('courses', courses);
+      buzz(25); render();
     }; });
     document.querySelectorAll('#c-list [data-rm]').forEach(b=>{ b.onclick = ()=>{
       courses.splice(+b.dataset.rm,1); lsSet('courses', courses); render(); }; });
@@ -1378,8 +1517,8 @@ function settingsScreen(){
         <button class="switch ${prefs.veille?'on':''}" data-p="veille"></button>
       </div>
       <div class="optrow">
-        <div class="ot"><b>Dates de péremption</b><span>Ajoute une date aux articles frigo/congel ; ceux qui périment bientôt remontent et passent en couleur</span></div>
-        <button class="switch ${useExpiry?'on':''}" data-x="expiry"></button>
+        <div class="ot"><b>Boutons de rangement directs</b><span>Dans les courses, affiche une icône par liste active (au lieu du 🧺) pour ranger en un seul tap</span></div>
+        <button class="switch ${directStore?'on':''}" data-p2="directStore"></button>
       </div>
     </div>
     <h2 class="sec">Mes listes de stockage</h2>
@@ -1390,6 +1529,15 @@ function settingsScreen(){
         <button class="switch ${active[k]?'on':''}" data-st="${k}"></button>
       </div>`).join('')}
       <p class="note" style="margin-top:10px">Les listes activées apparaissent sur l'écran d'accueil et dans les choix de rangement. En désactiver une ne supprime pas son contenu.</p>
+    </div>
+    <h2 class="sec">Dates de péremption</h2>
+    <div class="card">
+      ${Object.keys(STORES).map(k=>`
+      <div class="optrow">
+        <div class="ot"><b>${STORES[k].ico} ${STORES[k].lbl}</b></div>
+        <button class="switch ${expiryStores[k]?'on':''}" data-xs="${k}"></button>
+      </div>`).join('')}
+      <p class="note" style="margin-top:10px">Activée pour une liste : un champ date apparaît, et les articles périmant bientôt remontent en tête avec une couleur. Désactivée : la liste reste neutre, comme avant.</p>
     </div>
     <h2 class="sec">Sauvegarde</h2>
     <div class="card">
@@ -1403,9 +1551,13 @@ function settingsScreen(){
     const k = s.dataset.st; active[k] = !active[k]; lsSet('activeStores', active);
     s.classList.toggle('on', active[k]); buzz(20);
   }; });
-  document.querySelectorAll('.switch[data-x]').forEach(s=>{ s.onclick = ()=>{
-    useExpiry = !useExpiry; savePref('expiry', useExpiry);
-    s.classList.toggle('on', useExpiry); buzz(20);
+  document.querySelectorAll('.switch[data-xs]').forEach(s=>{ s.onclick = ()=>{
+    const k = s.dataset.xs; expiryStores[k] = !expiryStores[k]; lsSet('expiryStores', expiryStores);
+    s.classList.toggle('on', expiryStores[k]); buzz(20);
+  }; });
+  document.querySelectorAll('.switch[data-p2]').forEach(s=>{ s.onclick = ()=>{
+    directStore = !directStore; savePref('directStore', directStore);
+    s.classList.toggle('on', directStore); buzz(20);
   }; });
   document.querySelectorAll('.switch[data-p]').forEach(s=>{ s.onclick = ()=>{
     const p = s.dataset.p; prefs[p] = !prefs[p]; savePref(p, prefs[p]);
@@ -1415,7 +1567,7 @@ function settingsScreen(){
   }; });
   document.getElementById('o-export').onclick = ()=>{
     const data = { app:'repas', version:2, exported:new Date().toISOString(),
-      recipes, plan, stores, active, courses };
+      recipes, plan, stores, active, expiryStores, courses };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1432,22 +1584,25 @@ function settingsScreen(){
       try{
         const data = JSON.parse(rd.result);
         if(data.app!=='repas') throw new Error('format');
-        if(!confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')) return;
-        recipes = Array.isArray(data.recipes)?data.recipes:[];
-        plan = data.plan && typeof data.plan==='object' ? data.plan : {};
-        if(data.stores && typeof data.stores==='object'){
-          stores = data.stores;
-        } else {
-          stores = { frigo: Array.isArray(data.frigo)?data.frigo:[], congel: Array.isArray(data.congel)?data.congel:[], placard: [], autre: [] };
-        }
-        Object.keys(STORES).forEach(k=>{ if(!Array.isArray(stores[k])) stores[k] = []; });
-        active = Object.assign({ frigo:true, congel:true, placard:false, autre:false }, data.active||{});
-        courses = Array.isArray(data.courses)?data.courses:[];
-        lsSet('recipes', recipes); lsSet('plan', plan); lsSet('stores', stores);
-        lsSet('activeStores', active); lsSet('courses', courses);
-        alert('Sauvegarde importée ✓');
-        home();
-      }catch(err){ alert('Ce fichier n\u2019est pas une sauvegarde repas. valide.'); }
+        confirmSheet({ title:'Importer cette sauvegarde ?', msg:'Toutes tes données actuelles (recettes, listes, planning…) seront remplacées par celles du fichier.', yes:'Importer', no:'Annuler', danger:true }, ()=>{
+          recipes = Array.isArray(data.recipes)?data.recipes:[];
+          plan = data.plan && typeof data.plan==='object' ? data.plan : {};
+          if(data.stores && typeof data.stores==='object'){
+            stores = data.stores;
+          } else {
+            stores = { frigo: Array.isArray(data.frigo)?data.frigo:[], congel: Array.isArray(data.congel)?data.congel:[], placard: [], autre: [] };
+          }
+          Object.keys(STORES).forEach(k=>{ if(!Array.isArray(stores[k])) stores[k] = []; });
+          active = Object.assign({ frigo:true, congel:true, placard:false, autre:false }, data.active||{});
+          if(data.expiryStores && typeof data.expiryStores==='object'){ expiryStores = Object.assign({ frigo:false, congel:false, placard:false, autre:false }, data.expiryStores); lsSet('expiryStores', expiryStores); }
+          courses = Array.isArray(data.courses)?data.courses:[];
+          sessions = []; saveSessions();
+          lsSet('recipes', recipes); lsSet('plan', plan); lsSet('stores', stores);
+          lsSet('activeStores', active); lsSet('courses', courses);
+          toast('Sauvegarde importée ✓');
+          home();
+        });
+      }catch(err){ toast('Fichier de sauvegarde invalide'); }
     };
     rd.readAsText(f);
   };
